@@ -1,0 +1,59 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Tue Jul 14 19:07:15 2020
+[*]
+[dumpfile] "G:\projects\mitysom-am57x\hw\fpga\ip\gpmc\tests\waveform.ghw"
+[dumpfile_mtime] "Tue Jul 14 19:02:47 2020"
+[dumpfile_size] 19951
+[savefile] "G:\projects\mitysom-am57x\hw\fpga\ip\gpmc\tests\format.gtkw"
+[timestart] 1972700000
+[size] 1723 783
+[pos] -1 -1
+*-24.754395 1998400000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] top.
+[treeopen] top.tb_gpmc_cocotb.
+[treeopen] top.tb_gpmc_cocotb.gpmc_int.
+[treeopen] top.tb_gpmc_cocotb.gpmc_int.i_core_edo.
+[treeopen] top.tb_gpmc_cocotb.mb.
+[sst_width] 419
+[signals_width] 298
+[sst_expanded] 1
+[sst_vpaned_height] 217
+@28
+top.tb_gpmc_cocotb.gpmc_fclk
+top.tb_gpmc_cocotb.gpmc_cs_n
+top.tb_gpmc_cocotb.s_core_wr
+top.tb_gpmc_cocotb.s_core_rd
+top.tb_gpmc_cocotb.gpmc_we_n
+top.tb_gpmc_cocotb.gpmc_oe_n
+top.tb_gpmc_cocotb.gpmc_adv_n
+top.tb_gpmc_cocotb.gpmc_cs_n
+top.tb_gpmc_cocotb.gpmc_clk
+#{top.tb_gpmc_cocotb.gpmc_be_n[1:0]} top.tb_gpmc_cocotb.gpmc_be_n[1] top.tb_gpmc_cocotb.gpmc_be_n[0]
+@22
+#{top.tb_gpmc_cocotb.gpmc_ad[15:0]} top.tb_gpmc_cocotb.gpmc_ad[15] top.tb_gpmc_cocotb.gpmc_ad[14] top.tb_gpmc_cocotb.gpmc_ad[13] top.tb_gpmc_cocotb.gpmc_ad[12] top.tb_gpmc_cocotb.gpmc_ad[11] top.tb_gpmc_cocotb.gpmc_ad[10] top.tb_gpmc_cocotb.gpmc_ad[9] top.tb_gpmc_cocotb.gpmc_ad[8] top.tb_gpmc_cocotb.gpmc_ad[7] top.tb_gpmc_cocotb.gpmc_ad[6] top.tb_gpmc_cocotb.gpmc_ad[5] top.tb_gpmc_cocotb.gpmc_ad[4] top.tb_gpmc_cocotb.gpmc_ad[3] top.tb_gpmc_cocotb.gpmc_ad[2] top.tb_gpmc_cocotb.gpmc_ad[1] top.tb_gpmc_cocotb.gpmc_ad[0]
+@28
+top.tb_gpmc_cocotb.s_core_clk
+top.tb_gpmc_cocotb.gpmc_int.o_core_wr
+top.tb_gpmc_cocotb.gpmc_int.o_core_rd
+@22
+#{top.tb_gpmc_cocotb.gpmc_int.o_core_cs[31:0]} top.tb_gpmc_cocotb.gpmc_int.o_core_cs[31] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[30] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[29] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[28] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[27] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[26] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[25] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[24] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[23] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[22] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[21] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[20] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[19] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[18] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[17] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[16] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[15] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[14] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[13] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[12] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[11] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[10] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[9] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[8] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[7] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[6] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[5] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[4] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[3] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[2] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[1] top.tb_gpmc_cocotb.gpmc_int.o_core_cs[0]
+@28
+#{top.tb_gpmc_cocotb.gpmc_int.o_core_be[1:0]} top.tb_gpmc_cocotb.gpmc_int.o_core_be[1] top.tb_gpmc_cocotb.gpmc_int.o_core_be[0]
+@22
+#{top.tb_gpmc_cocotb.gpmc_int.o_core_addr[5:0]} top.tb_gpmc_cocotb.gpmc_int.o_core_addr[5] top.tb_gpmc_cocotb.gpmc_int.o_core_addr[4] top.tb_gpmc_cocotb.gpmc_int.o_core_addr[3] top.tb_gpmc_cocotb.gpmc_int.o_core_addr[2] top.tb_gpmc_cocotb.gpmc_int.o_core_addr[1] top.tb_gpmc_cocotb.gpmc_int.o_core_addr[0]
+#{top.tb_gpmc_cocotb.gpmc_int.o_core_edi[15:0]} top.tb_gpmc_cocotb.gpmc_int.o_core_edi[15] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[14] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[13] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[12] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[11] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[10] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[9] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[8] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[7] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[6] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[5] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[4] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[3] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[2] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[1] top.tb_gpmc_cocotb.gpmc_int.o_core_edi[0]
+#{top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][15:0]} top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][15] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][14] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][13] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][12] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][11] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][10] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][9] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][8] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][7] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][6] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][5] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][4] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][3] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][2] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][1] top.tb_gpmc_cocotb.gpmc_int.i_core_edo[0][0]
+@28
+top.tb_gpmc_cocotb.gpmc_int.s_core_wr
+top.tb_gpmc_cocotb.gpmc_int.s_core_rd
+@420
+top.tb_gpmc_cocotb.gpmc_int.s_core_decode
+@22
+#{top.tb_gpmc_cocotb.gpmc_int.s_adv_n_r[3:0]} top.tb_gpmc_cocotb.gpmc_int.s_adv_n_r[3] top.tb_gpmc_cocotb.gpmc_int.s_adv_n_r[2] top.tb_gpmc_cocotb.gpmc_int.s_adv_n_r[1] top.tb_gpmc_cocotb.gpmc_int.s_adv_n_r[0]
+#{top.tb_gpmc_cocotb.gpmc_int.s_we_n_r[3:0]} top.tb_gpmc_cocotb.gpmc_int.s_we_n_r[3] top.tb_gpmc_cocotb.gpmc_int.s_we_n_r[2] top.tb_gpmc_cocotb.gpmc_int.s_we_n_r[1] top.tb_gpmc_cocotb.gpmc_int.s_we_n_r[0]
+#{top.tb_gpmc_cocotb.gpmc_int.s_oe_n_r[3:0]} top.tb_gpmc_cocotb.gpmc_int.s_oe_n_r[3] top.tb_gpmc_cocotb.gpmc_int.s_oe_n_r[2] top.tb_gpmc_cocotb.gpmc_int.s_oe_n_r[1] top.tb_gpmc_cocotb.gpmc_int.s_oe_n_r[0]
+@23
+#{top.tb_gpmc_cocotb.gpmc_int.s_cs_n_r[3:0]} top.tb_gpmc_cocotb.gpmc_int.s_cs_n_r[3] top.tb_gpmc_cocotb.gpmc_int.s_cs_n_r[2] top.tb_gpmc_cocotb.gpmc_int.s_cs_n_r[1] top.tb_gpmc_cocotb.gpmc_int.s_cs_n_r[0]
+[pattern_trace] 1
+[pattern_trace] 0
