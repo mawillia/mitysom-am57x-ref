@@ -31,9 +31,10 @@ set_property PACKAGE_PIN R6 [get_ports sys_rst_n]
 #set_property PACKAGE_PIN D6 [get_ports sys_clk_p]
 
 #########################################################
-# RESET INTERFACE
+# RESET INTERFACE (NOTE This is on Bank 34, you may need to adjust it)
 set_property IOSTANDARD LVCMOS18 [get_ports sys_rst_n]
-set_property PULLUP true [get_ports sys_rst_n]
+#This net is actively driven on the SOM
+#set_property PULLUP true [get_ports sys_rst_n]
 
 #########################################################
 # GPMC interface
@@ -63,13 +64,14 @@ set_property PACKAGE_PIN N14 [get_ports {io_gpmc_ad[12]}]
 set_property PACKAGE_PIN N17 [get_ports {io_gpmc_ad[13]}]
 set_property PACKAGE_PIN N18 [get_ports {io_gpmc_ad[14]}]
 set_property PACKAGE_PIN P18 [get_ports {io_gpmc_ad[15]}]
-# clock pins
-# This pins can move around bank 14
-set_property PACKAGE_PIN J18 [get_ports {o_sys_nirq[0]}]
-set_property PACKAGE_PIN U10 [get_ports {o_sys_nirq[1]}]
 set_property PACKAGE_PIN L15 [get_ports i_gpmc_adv_n]
 set_property PACKAGE_PIN N16 [get_ports {i_gpmc_be_n[0]}]
 set_property PACKAGE_PIN L14 [get_ports {i_gpmc_be_n[1]}]
+
+# Interrupt interface
+set_property PACKAGE_PIN J18 [get_ports {o_sys_nirq[0]}]
+set_property PACKAGE_PIN U10 [get_ports {o_sys_nirq[1]}]
+set_property PACKAGE_PIN J6  [get_ports {o_cpu_nmi_n}]
 
 # standards
 set_property IOSTANDARD LVCMOS18 [get_ports i_gpmc_cs_n]
@@ -251,6 +253,13 @@ set_property PACKAGE_PIN U1 [get_ports {HA06_N}]
 set_property PACKAGE_PIN K1 [get_ports {HA00_P}]
 set_property PACKAGE_PIN K3 [get_ports {HA01_P}]
 set_property PACKAGE_PIN L2 [get_ports {HA01_N}]
+set_property PACKAGE_PIN D10 [get_ports {i_id[0]}]
+set_property PACKAGE_PIN H14 [get_ports {i_id[1]}]
+
+# NOTE the voltage standard set here is 1.8V, but these 
+# pins are attached to Banks 15 or 34, which have
+# external connections for the bank voltage.  You need
+# to set these voltage levels accordingly.
 set_property IOSTANDARD LVCMOS18 [get_ports {LA21_N}]
 set_property IOSTANDARD LVCMOS18 [get_ports {LA21_P}]
 set_property IOSTANDARD LVCMOS18 [get_ports {LA22_N}]
@@ -347,3 +356,8 @@ set_property IOSTANDARD LVCMOS18 [get_ports {HA06_N}]
 set_property IOSTANDARD LVCMOS18 [get_ports {HA00_P}]
 set_property IOSTANDARD LVCMOS18 [get_ports {HA01_P}]
 set_property IOSTANDARD LVCMOS18 [get_ports {HA01_N}]
+# bank 34
+set_property IOSTANDARD LVCMOS18 [get_ports {o_cpu_nmi_n}]
+# bank 15
+set_property IOSTANDARD LVCMOS18 [get_ports {i_id[0]}]
+set_property IOSTANDARD LVCMOS18 [get_ports {i_id[1]}]

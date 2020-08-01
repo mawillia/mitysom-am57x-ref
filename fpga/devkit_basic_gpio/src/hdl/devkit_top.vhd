@@ -43,6 +43,10 @@ entity devkit_top is
 		
 		-- irq interface
 		o_sys_nirq    : out std_logic_vector(1 downto 0);
+		o_cpu_nmi_n   : out std_logic;
+
+		-- misc id pins
+		i_id          : in std_logic_vector(1 downto 0);
 
 		-- PCIe x2 signals
 		pci_exp_txp                   : out std_logic_vector(1 downto 0);
@@ -224,7 +228,7 @@ architecture rtl of devkit_top is
 	
 	signal s_vid_data : unsigned(23 downto 0) := (others=>'0');
 
-	constant NUM_IO : integer := 96;
+	constant NUM_IO : integer := 98;
 
 	-- gpio pins
 	signal t_gpio     : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
@@ -232,6 +236,8 @@ architecture rtl of devkit_top is
 	signal s_gpio_in  : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
 
 begin
+
+	o_cpu_nmi_n <= '1'; -- NMI is not used in this project, but should be deasserted
 
 	--! Infer the PCIe interface block.
 	pcie_block : xilinx_pcie_2_1_ep_7x
@@ -344,7 +350,7 @@ begin
 
 	gp2 : gpio 
 		Generic map (
-			NUM_BANKS       => 2,
+			NUM_BANKS       => 3,
 			NUM_IO_PER_BANK => 16
 		)
 		Port Map ( 
@@ -358,11 +364,14 @@ begin
 			o_irq           => s_irq_map(0)(1),
 			i_ilevel        => "00",
 			i_ivector       => "0001",  
-			i_io            => s_gpio_in(95 downto 64),
-			t_io            => t_gpio(95 downto 64),
-			o_io            => s_gpio_out(95 downto 64),
-			i_initdir       => (others=>'0'),
-			i_initoutval    => (others=>'0')
+			i_io(33 downto 0)  => s_gpio_in(97 downto 64),
+			i_io(47 downto 34) => (others=>'0'),
+			t_io(33 downto 0)  => t_gpio(97 downto 64),
+			t_io(47 downto 34) => open,
+			o_io(33 downto 0)  => s_gpio_out(97 downto 64),
+			o_io(47 downto 34) => open,
+			i_initdir          => (others=>'0'),
+			i_initoutval       => (others=>'0')
 		);
 
 	vout_proc : process(i_gpmc_clk)
@@ -567,5 +576,7 @@ begin
 	s_gpio_in(93) <= HA03_N;
 	s_gpio_in(94) <= HA06_P;
 	s_gpio_in(95) <= HA06_N;
+	s_gpio_in(96) <= i_id(0);
+	s_gpio_in(97) <= i_id(1);
 
 end rtl;
