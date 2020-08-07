@@ -8,7 +8,7 @@ References:
 
 ## Creating the Vivado Project (GUI / Project Mode)
 
-To create a Vivado project to support running vivado, run the TCL script to build the project.
+To create a Vivado project to support running vivado, run the following TCL script to build the project.
 
 vivado -mode batch -source script/gen_devkit_project.tcl
 
@@ -17,7 +17,11 @@ source files.
 
 ## Building the project from the Command line.
 
-TODO.
+To create a bitstream running vivado in non-project mode, run the following TCL script to build the project.
+
+vivado -mode tcl -source ./script/build_devkit_bitstream_batch.tcl
+
+This will create an output folder ./devkit_output and will place the build report files as well as a generated bitstream.
 
 ## Project overview
 
@@ -34,6 +38,10 @@ Stuff remaining / TODO
 - Add external interface timing constraints
 
 ### Directory Contents
+
+The local / project specific files for the project are listed below.
+
+In addition, common ip files (provided by Critical Link) are included from ../ip (above the devkit_basic_gpio folder).
 
 ```
 .
