@@ -19,7 +19,7 @@ source files.
 
 To create a bitstream running vivado in non-project mode, run the following TCL script to build the project.
 
-vivado -mode tcl -source ./script/build_devkit_bitstream_batch.tcl
+vivado -mode batch -source ./script/build_devkit_bitstream_batch.tcl
 
 This will create an output folder ./devkit_output and will place the build report files as well as a generated bitstream.
 
