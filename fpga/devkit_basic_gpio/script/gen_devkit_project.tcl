@@ -38,6 +38,7 @@
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/hdl/xilinx_pcie_2_1_ep_7x.vhd"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/hdl/devkit_top.vhd"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/constraints/devkit_top.xdc"
+#    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/constraints/devkit_top_impl.xdc"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/constraints/xilinx_pcie_7x_ep_x2g2.xdc"
 #
 # 3. The following remote source files that were added to the original project:-
@@ -303,6 +304,13 @@ set obj [get_filesets constrs_1]
 set file "[file normalize "$origin_dir/src/constraints/devkit_top.xdc"]"
 set file_added [add_files -norecurse -fileset $obj [list $file]]
 set file "constraints/devkit_top.xdc"
+set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
+set_property -name "file_type" -value "XDC" -objects $file_obj
+
+# Add/Import constrs file and set constrs file properties
+set file "[file normalize "$origin_dir/src/constraints/devkit_top_impl.xdc"]"
+set file_added [add_files -norecurse -fileset $obj [list $file]]
+set file "constraints/devkit_top_impl.xdc"
 set file_obj [get_files -of_objects [get_filesets constrs_1] [list "*$file"]]
 set_property -name "file_type" -value "XDC" -objects $file_obj
 
