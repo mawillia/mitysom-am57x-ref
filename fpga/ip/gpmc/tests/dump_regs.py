@@ -20,38 +20,38 @@ gpmc_config = { "name"              : "ASYNC, Single Read, A/D mode",
 				"DEVICESIZE"               : 1, # 16 bit
 				"DEVICETYPE"               : 0, # NOR type
 				"MUXADDDATA"               : 2, # address and data multiplexed
-				"TIMEPARAGRANUALRITY"      : 0, # x1 latencies
+				"TIMEPARAGRANUALRITY"      : 1, # x1 latencies
 				"GPMCFCLKDIVIDER"          : 0, # 266 MHz
 				# GPMC_CONFIG_2
-				"CSWROFFTIME"              : 14,
-				"CSRDOFFTIME"              : 16,
+				"CSWROFFTIME"              : 16,
+				"CSRDOFFTIME"              : 14,
 				"CSEXTRADELAY"             : 0,
 				"CSONTIME"                 : 0,
 				# GPMC_CONFIG_3
-				"ADVAADMUXWROFFTIME"       : 2, # don't care
-				"ADVAADMUXRDOFFTIME"       : 2, # don't care
+				"ADVAADMUXWROFFTIME"       : 0, # don't care
+				"ADVAADMUXRDOFFTIME"       : 0, # don't care
 				"ADVWROFFTIME"             : 6, # nADV deassertion time from start cycle time for write
 				"ADVRDOFFTIME"             : 6, # nADV deassertion time from start cycle time for read
 				"ADVEXTRADELAY"            : 0, # don't add half cycles
-				"ADVAADMUXONTIME"          : 1, # don't care
+				"ADVAADMUXONTIME"          : 0, # don't care
 				"ADVONTIME"                : 0, # nADV assertion time from start cycle
 				# GPMC_CONFIG_4
 				"WEOFFTIME"                : 14, # nWE deassertion time from start cycle time
 				"WEEXTRADELAY"             : 0,  # no half cycles
 				"WEONTIME"                 : 6,  # nWE assertion time
-				"OEAADMUXOFFTIME"          : 3,  # don't care
-				"OEOFFTIME"                : 16, # nOE deassertion time from start cycle time
+				"OEAADMUXOFFTIME"          : 0,  # don't care
+				"OEOFFTIME"                : 14, # nOE deassertion time from start cycle time
 				"OEEXTRADELAY"             : 0,  # no half cycles
-				"OEAADMUXONTIME"           : 1,  # don't care
+				"OEAADMUXONTIME"           : 0,  # don't care
 				"OEONTIME"                 : 6,  # nOE assertion time from start cycle time
 				# GPMC_CONFIG_5
-				"PAGEBURSTACCESSTIME"      : 1,  # don't care
-				"RDACCESSTIME"             : 15, # delay between start cycle time and first data valid
+				"PAGEBURSTACCESSTIME"      : 0,  # don't care
+				"RDACCESSTIME"             : 11, # delay between start cycle time and first data valid
 				"WRCYCLETIME"              : 15, # Total write cycle time
-				"RDCYCLETIME"              : 17, # Total read cycle time
+				"RDCYCLETIME"              : 16, # Total read cycle time
 				# GPMC_CONFIG_6
-				"WRACCESSTIME"             : 15, # don't care (sync mode)
-				"WRDATAONADMUXBUS"         : 7,  # don't care (sync mode)
+				"WRACCESSTIME"             : 0, # don't care (sync mode)
+				"WRDATAONADMUXBUS"         : 6,  # don't care (sync mode)
 				"CYCLE2CYCLEDELAY"         : 3,  # chip select high pulse delay between successive accesses
 				"CYCLE2CYCLESAMECSEN"      : 1,  # chip select high pulse delay between successive accesses
 				"CYCLE2CYCLEDIFFCSEN"      : 1,  # chip select high pulse delay between successive accesses
@@ -59,7 +59,7 @@ gpmc_config = { "name"              : "ASYNC, Single Read, A/D mode",
 				# GPMC_CONFIG_7
 				"MASKADDRESS"              : 15, # 16 MiB mask
 				"CSVALID"                  : 1,  # enable CS
-				"BASEADDRESS"              : 0   # use relateive address range -> 0x00000000 ->0x00FFFFFF
+				"BASEADDRESS"              : 1   # use relateive address range -> 0x00000000 ->0x00FFFFFF
 				}
 
 def dump_regs(config):
@@ -205,4 +205,4 @@ def dump_uboot_regs(config):
 	print("};")
 
 dump_regs(gpmc_config)
-dump_uboot_regs(gpmc_config)
+#dump_uboot_regs(gpmc_config)

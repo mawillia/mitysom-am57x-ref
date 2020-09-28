@@ -86,9 +86,9 @@ class GPMC(object):
 		await RisingEdge(self.dut.gpmc_fclk)
 		clocks = 0
 		# FA9 (CSONTIME * (TimeParaGranularity + 1) + 0.5 * CSExtraDelay) * GPMF_FCLK
-		onclock = self.config["CSONTIME"]
+		onclock = self.config["CSONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		# FA1 + FA9
-		offclock = self.config["CSRDOFFTIME"]
+		offclock = self.config["CSRDOFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < onclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -104,12 +104,12 @@ class GPMC(object):
 		# assert Address
 		self.dut.gpmc_ad <= ((addr >> 1) & 0xFFFF)
 		# FA29 + FA13 + FA37
-		offclock = self.config["OEONTIME"]
+		offclock = self.config["OEONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_ad <= cocotb.binary.BinaryValue('ZZZZZZZZZZZZZZZZ')
-		readclock = self.config["RDACCESSTIME"]
+		readclock = self.config["RDACCESSTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < readclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -119,7 +119,7 @@ class GPMC(object):
 		await RisingEdge(self.dut.gpmc_fclk)
 		self.dut.gpmc_be_n <= 0
 		clocks = 0
-		offclock = self.config["RDCYCLETIME"]
+		offclock = self.config["RDCYCLETIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -129,17 +129,17 @@ class GPMC(object):
 		await RisingEdge(self.dut.gpmc_fclk)
 		self.dut.gpmc_adv_n <= 1
 		clocks = 0
-		offclock = self.config["ADVONTIME"]
+		offclock = self.config["ADVONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_adv_n <= 0
-		offclock = self.config["ADVRDOFFTIME"]
+		offclock = self.config["ADVRDOFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_adv_n <= 1
-		offclock = self.config["RDCYCLETIME"]
+		offclock = self.config["RDCYCLETIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -148,12 +148,12 @@ class GPMC(object):
 	async def do_read_noe(self):
 		await RisingEdge(self.dut.gpmc_fclk)
 		clocks = 0
-		onclock = self.config["OEONTIME"]
+		onclock = self.config["OEONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < onclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_oe_n <= 0
-		offclock = self.config["OEOFFTIME"]
+		offclock = self.config["OEOFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -168,15 +168,14 @@ class GPMC(object):
 		read_noe = cocotb.fork(self.do_read_noe())
 		await read_cs
 		await read_be
-		await read_be
 		await read_noe
 		await read_nadv
 		value = await read_ad
-		cycle_delay = self.config["OEOFFTIME"]
+		cycle_delay = self.config["OEOFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		if self.config["CYCLE2CYCLESAMECSEN"] > cycle_delay:
-			cycle_delay = self.config["CYCLE2CYCLESAMECSEN"]
+			cycle_delay = self.config["CYCLE2CYCLESAMECSEN"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		if self.config["CYCLE2CYCLEDIFFCSEN"] > cycle_delay:
-			cycle_delay = self.config["CYCLE2CYCLEDIFFCSEN"]
+			cycle_delay = self.config["CYCLE2CYCLEDIFFCSEN"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		clocks = 0
 		while clocks < cycle_delay:
 			await RisingEdge(self.dut.gpmc_fclk)
@@ -187,9 +186,9 @@ class GPMC(object):
 		await RisingEdge(self.dut.gpmc_fclk)
 		clocks = 0
 		# FA9 (CSONTIME * (TimeParaGranularity + 1) + 0.5 * CSExtraDelay) * GPMF_FCLK
-		onclock = self.config["CSONTIME"]
+		onclock = self.config["CSONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		# FA1 + FA9
-		offclock = self.config["CSWROFFTIME"]
+		offclock = self.config["CSWROFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < onclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -205,12 +204,13 @@ class GPMC(object):
 		# assert Address
 		self.dut.gpmc_ad <= ((addr >> 1) & 0xFFFF)
 		# FA29 + FA13 + FA37
-		offclock = self.config["WRDATAONADMUXBUS"]
+		offclock = self.config["WRDATAONADMUXBUS"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
+			self.dut.gpmc_ad <= ((addr >> 1) & 0xFFFF)
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_ad <= data
-		offclock = self.config["WRCYCLETIME"]
+		offclock = self.config["WRCYCLETIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -220,7 +220,7 @@ class GPMC(object):
 		await RisingEdge(self.dut.gpmc_fclk)
 		self.dut.gpmc_be_n <= be_n
 		clocks = 0
-		offclock = self.config["WRCYCLETIME"]
+		offclock = self.config["WRCYCLETIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -230,17 +230,17 @@ class GPMC(object):
 		await RisingEdge(self.dut.gpmc_fclk)
 		self.dut.gpmc_adv_n <= 1
 		clocks = 0
-		offclock = self.config["ADVONTIME"]
+		offclock = self.config["ADVONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_adv_n <= 0
-		offclock = self.config["ADVWROFFTIME"]
+		offclock = self.config["ADVWROFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_adv_n <= 1
-		offclock = self.config["WRCYCLETIME"]
+		offclock = self.config["WRCYCLETIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -249,12 +249,12 @@ class GPMC(object):
 	async def do_write_nwe(self):
 		await RisingEdge(self.dut.gpmc_fclk)
 		clocks = 0
-		offclock = self.config["WEONTIME"]
+		offclock = self.config["WEONTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
 		self.dut.gpmc_we_n <= 0
-		offclock = self.config["WEOFFTIME"]
+		offclock = self.config["WEOFFTIME"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		while clocks < offclock:
 			await RisingEdge(self.dut.gpmc_fclk)
 			clocks = clocks + 1
@@ -267,16 +267,16 @@ class GPMC(object):
 		write_be = cocotb.fork(self.do_write_be(be_n))
 		write_nadv = cocotb.fork(self.do_write_nadv())
 		write_nwe = cocotb.fork(self.do_write_nwe())
-		await write_cs
-		await write_ad
 		await write_be
 		await write_nadv
 		await write_nwe
-		cycle_delay = self.config["CYCLE2CYCLEDELAY"]
-		if self.config["CYCLE2CYCLESAMECSEN"] > cycle_delay:
-			cycle_delay = self.config["CYCLE2CYCLESAMECSEN"]
-		if self.config["CYCLE2CYCLEDIFFCSEN"] > cycle_delay:
-			cycle_delay = self.config["CYCLE2CYCLEDIFFCSEN"]
+		await write_cs
+		await write_ad
+		cycle_delay = self.config["CYCLE2CYCLEDELAY"]*(1+self.config["TIMEPARAGRANUALRITY"])
+		if self.config["CYCLE2CYCLESAMECSEN"]*(1+self.config["TIMEPARAGRANUALRITY"]) > cycle_delay:
+			cycle_delay = self.config["CYCLE2CYCLESAMECSEN"]*(1+self.config["TIMEPARAGRANUALRITY"])
+		if self.config["CYCLE2CYCLEDIFFCSEN"]*(1+self.config["TIMEPARAGRANUALRITY"]) > cycle_delay:
+			cycle_delay = self.config["CYCLE2CYCLEDIFFCSEN"]*(1+self.config["TIMEPARAGRANUALRITY"])
 		clocks = 0
 		while clocks < cycle_delay:
 			await RisingEdge(self.dut.gpmc_fclk)

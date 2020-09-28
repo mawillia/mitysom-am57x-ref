@@ -32,7 +32,7 @@ entity GPMC_iface is
 		-- GPMC direct-connect signals
 		i_gpmc_cs_n   : in  std_logic;
 		io_gpmc_ad    : inout std_logic_vector(15 downto 0);
-		i_gpmc_adv_n  : in  std_logic; -- address valid
+		i_gpmc_adv_n  : in  std_logic; -- address valid (NOT USED)
 		i_gpmc_oe_n   : in  std_logic; -- output enable
 		i_gpmc_we_n   : in  std_logic; -- write enable
 		i_gpmc_be_n   : in  std_logic_vector(1 downto 0); -- byte enable
@@ -50,7 +50,6 @@ end GPMC_iface;
 
 architecture rtl of GPMC_iface is
 
-	signal s_adv_n_r : std_logic_vector(3 downto 0) := (others=>'1');
 	signal s_cs_n_r : std_logic_vector(3 downto 0) := (others=>'1');
 	signal s_oe_n_r : std_logic_vector(3 downto 0) := (others=>'1');
 	signal s_we_n_r : std_logic_vector(3 downto 0) := (others=>'1');
@@ -82,8 +81,7 @@ begin -- architecture: rtl
 			s_core_wr <= '0';
 			
 			-- metastable / latch input strobes
-			s_adv_n_r     <= s_adv_n_r(s_adv_n_r'length-2 downto 0) & i_gpmc_adv_n;
-			s_cs_n_r      <= s_cs_n_r(s_adv_n_r'length-2 downto 0) & i_gpmc_cs_n;
+			s_cs_n_r      <= s_cs_n_r(s_cs_n_r'length-2 downto 0) & i_gpmc_cs_n;
 			s_oe_n_r      <= s_oe_n_r(s_oe_n_r'length-2 downto 0) & i_gpmc_oe_n;
 			s_we_n_r      <= s_we_n_r(s_we_n_r'length -2 downto 0) & i_gpmc_we_n;
 
@@ -95,7 +93,7 @@ begin -- architecture: rtl
 			end if;
 
 			-- address and BE latch
-			if s_cs_n_r(1) = '0' and s_adv_n_r(1 downto 0) = "00" then
+			if s_cs_n_r(2 downto 0) = "100" then
 				o_core_addr <= s_core_addr(5 downto 0);
 				s_core_decode <= to_integer(unsigned(s_core_addr(DECODE_BITS+5 downto 6)));
 				s_core_cs(to_integer(unsigned(s_core_addr(DECODE_BITS+5 downto 6)))) <= '1';
@@ -103,14 +101,17 @@ begin -- architecture: rtl
 				s_be(1) <= not i_gpmc_be_n(1);
 			end if;
 			
-			s_core_edo <= i_core_edo(s_core_decode);
-			
-			if s_cs_n_r(3) = '0' and s_oe_n_r(3 downto 1) = "001" then
-				s_core_rd <= '1';
+			if i_gpmc_oe_n='0' then
+				s_core_edo <= i_core_edo(s_core_decode);
 			end if;
-
+			
 			if s_cs_n_r(1) = '0' and s_we_n_r(1 downto 0) = "00" then
 				o_core_edi <= s_core_addr;
+			end if;
+
+			-- post read and write strobes to support FIFO / auto-address logic
+			if s_cs_n_r(3) = '0' and s_oe_n_r(3 downto 1) = "001" then
+				s_core_rd <= '1';
 			end if;
 
 			if  s_cs_n_r(3) = '0' and s_we_n_r(3 downto 1) = "001" then
