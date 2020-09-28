@@ -1,0 +1,25 @@
+{
+  signal: [
+  [ 'GPMC',
+    {name: 'GPMC_FCLK/2',     wave: 'p...........Pp........',    period : 2},
+    {name: 'GPMC_AD',         wave: 'z3.....x4........z....',    period : 2, data: ["ADDR", "DATA OUT"], node: '...'},
+    {name: 'GPMC_BE_N',       wave: '13...............z....',    period : 2, data: ["BYTE_ENABLE"],  node: '...'},
+    {name: 'GPMC_CS0_N',      wave: '10.............1......',    period : 2, node: '...'},
+    {name: 'GPMC_ADV_N',      wave: '10.....1.........0....',    period : 2, node: '...'},
+    {name: 'GPMC_WE_N',       wave: '1.....................',    period : 2, node: '...'},
+    {name: 'GPMC_OE_N',       wave: '1......0.......1......',    period : 2, node: '...'},
+   {name: 'Read Access',     wave: '0...........10........',    period : 2, node: '...', phase:.99 },
+  ],
+   {},
+  [ 'FPGA',
+    {name: 'FPGA_100MHz', wave:    'p..............',            period : 3},
+    {name: 'core_addr',   wave:    'x..3..........x',            period : 3, data: ["ADDR"]},
+    {name: 'core_be',     wave:    'x..3..........x',            period : 3, data: ["BE"]},
+    {name: 'core_edo',    wave:    'x....4........x',            period : 3, data: ["DATA FROM FPGA CORES"]},
+    {name: 'core_rd',     wave:    '0...........10.',            period : 3},
+    {name: 'core_cs',     wave:    'x..0..........x',            period : 3},
+  ]
+  ],
+  config: { skin : 'narrow' },
+   head: { text:'Asynchronous GPMC Read (Default Timings GPMC_FCLK/2 = 133.33 MHz)'}
+}
