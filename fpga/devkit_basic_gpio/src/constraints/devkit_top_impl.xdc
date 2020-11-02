@@ -36,7 +36,8 @@ set_property PACKAGE_PIN T17 [get_ports i_gpmc_cs_n]
 set_property PACKAGE_PIN R18 [get_ports i_gpmc_oe_n]
 # CONFIG -> CCLK Must be doubled externally
 # CONFIG -> EMCCLK
-set_property PACKAGE_PIN P15 [get_ports i_gpmc_clk]
+#set_property PACKAGE_PIN P15 [get_ports i_gpmc_clk]
+set_property PACKAGE_PIN P15 [get_ports o_vin_hsync]
 set_property PACKAGE_PIN K18 [get_ports i_gpmc_we_n]
 # D0->D16
 set_property PACKAGE_PIN K16 [get_ports {io_gpmc_ad[0]}]
@@ -55,7 +56,8 @@ set_property PACKAGE_PIN N14 [get_ports {io_gpmc_ad[12]}]
 set_property PACKAGE_PIN N17 [get_ports {io_gpmc_ad[13]}]
 set_property PACKAGE_PIN N18 [get_ports {io_gpmc_ad[14]}]
 set_property PACKAGE_PIN P18 [get_ports {io_gpmc_ad[15]}]
-set_property PACKAGE_PIN L15 [get_ports i_gpmc_adv_n]
+#set_property PACKAGE_PIN L15 [get_ports i_gpmc_adv_n]
+set_property PACKAGE_PIN L15 [get_ports o_vin_vsync]
 set_property PACKAGE_PIN N16 [get_ports {i_gpmc_be_n[0]}]
 set_property PACKAGE_PIN L14 [get_ports {i_gpmc_be_n[1]}]
 

@@ -35,7 +35,8 @@ entity vip_sim is
 	);
 	port (
 		i_clk         : in std_logic; -- reference clock, 148.5 MHz for 60 Hz timing with no adjustments
-		-- VIN4A interface (MUST USE EMBEDDED SYNC MODES)
+		o_vin_hsync   : out std_logic := '0'; -- external sync option (active high)
+		o_vin_vsync   : out std_logic := '0'; -- external sync option (active high)
 		o_vin_d       : out std_logic_vector(23 downto 0);
 		o_vin_clk     : out std_logic
 	);
@@ -138,27 +139,31 @@ begin
 
 			case s_line_state is
 				when VBLANK_FRONT =>
+					o_vin_hsync <= '0';
 					if s_line_cnt = V_PORCH_FRONT then
 						s_line_state <= ACTIVE;
 						s_SAV <= x"80"; -- H=0, V=0, H=0 plus protection bits
 						s_EAV <= x"9D"; -- F=1, V=0, H=1 plus protection bits
 					end if;
 				when ACTIVE =>
+					o_vin_hsync <= '1';
 					if s_line_cnt = V_PORCH_FRONT + OUT_HEIGHT then
 						s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
 						s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
 						s_line_state <= VBLANK_BACK;
 					end if;
 				when VBLANK_BACK =>
+					o_vin_hsync <= '0';
 					if s_line_cnt = V_PORCH_FRONT + OUT_HEIGHT + V_PORCH_BACK then
 						s_line_state <= VBLANK_FRONT;
 						s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
 						s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
 					end if;
 				when others =>
-						s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
-						s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
-						s_line_state <= VBLANK_FRONT;
+					o_vin_hsync <= '0';
+					s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
+					s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
+					s_line_state <= VBLANK_FRONT;
 			end case;
 
 			-- generate codes
@@ -183,6 +188,12 @@ begin
 			-- video data
 			else
 				s_data <= s_rom_r(to_integer(s_color_lookup)) & s_rom_g(to_integer(s_color_lookup)) & s_rom_b(to_integer(s_color_lookup));
+			end if;
+
+			if s_col_cnt < H_PORCH then
+				o_vin_hsync <= '0';
+			else
+				o_vin_hsync <= '1';
 			end if;
 		end if;
 	end process drive_timing;

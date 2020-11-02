@@ -29,15 +29,17 @@ entity devkit_top is
 	generic ( DECODE_BITS   : integer := 2 ) ;
 	port (
 		-- GPMC interface
-		i_gpmc_clk    : in  std_logic;
+		-- i_gpmc_clk    : in  std_logic;
 		i_gpmc_cs_n   : in  std_logic;
 		io_gpmc_ad    : inout std_logic_vector(15 downto 0);
-		i_gpmc_adv_n  : in  std_logic; -- address valid
+		-- i_gpmc_adv_n  : in  std_logic; -- address valid
 		i_gpmc_oe_n   : in  std_logic; -- output enable
 		i_gpmc_we_n   : in  std_logic; -- write enable
 		i_gpmc_be_n   : in  std_logic_vector(1 downto 0); -- byte enable
 		
 		-- VIN4A interface (MUST USE EMBEDDED SYNC MODES)
+		o_vin_hsync   : out std_logic := '0'; -- external sync option (active high)
+		o_vin_vsync   : out std_logic := '0'; -- external sync option (active high)
 		o_vin_d       : out std_logic_vector(23 downto 0);
 		o_vin_clk     : out std_logic;
 		
@@ -208,7 +210,8 @@ architecture rtl of devkit_top is
 		);
 		port (
 			i_clk         : in std_logic; -- reference clock, 148.5 MHz for 60 Hz timing
-			-- VIN4A interface (MUST USE EMBEDDED SYNC MODES)
+			o_vin_hsync   : out std_logic := '0'; -- external sync option (active high)
+			o_vin_vsync   : out std_logic := '0'; -- external sync option (active high)
 			o_vin_d       : out std_logic_vector(23 downto 0);
 			o_vin_clk     : out std_logic
 		);
@@ -226,8 +229,6 @@ architecture rtl of devkit_top is
 	
 	signal s_irq_map : bus16_vector(1 downto 0) := (others=>(others=>'0'));
 	
-	signal s_vid_data : unsigned(23 downto 0) := (others=>'0');
-
 	constant NUM_IO : integer := 98;
 
 	-- gpio pins
@@ -273,6 +274,8 @@ begin
 		port map (
 			i_clk         => s_vip_clk,
 			-- VIN4A interface (MUST USE EMBEDDED SYNC MODES)
+			o_vin_hsync   => o_vin_hsync,
+			o_vin_vsync   => o_vin_vsync,
 			o_vin_d       => o_vin_d,
 			o_vin_clk     => o_vin_clk
 		);
@@ -288,7 +291,7 @@ begin
 			-- GPMC direct-connect signals
 			i_gpmc_cs_n   => i_gpmc_cs_n,
 			io_gpmc_ad    => io_gpmc_ad,
-			i_gpmc_adv_n  => i_gpmc_adv_n,
+			i_gpmc_adv_n  => '0',
 			i_gpmc_oe_n   => i_gpmc_oe_n,
 			i_gpmc_we_n   => i_gpmc_we_n,
 			i_gpmc_be_n   => i_gpmc_be_n,
@@ -374,13 +377,6 @@ begin
 			i_initdir          => (others=>'0'),
 			i_initoutval       => (others=>'0')
 		);
-
-	vout_proc : process(i_gpmc_clk)
-	begin
-		if falling_edge(i_gpmc_clk) then
-			s_vid_data <= s_vid_data + 1;
-		end if;
-	end process vout_proc;
 
 	-- IO assignments here
 	LA18_N <= s_gpio_out(0) when t_gpio(0)   = '0' else 'Z';

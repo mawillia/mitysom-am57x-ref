@@ -13,7 +13,8 @@ set_property IOSTANDARD LVCMOS18 [get_ports sys_rst_n]
 
 # standards
 set_property IOSTANDARD LVCMOS18 [get_ports i_gpmc_cs_n]
-set_property IOSTANDARD LVCMOS18 [get_ports i_gpmc_adv_n]
+#set_property IOSTANDARD LVCMOS18 [get_ports i_gpmc_adv_n]
+set_property IOSTANDARD LVCMOS18 [get_ports o_vin_vsync]
 set_property IOSTANDARD LVCMOS18 [get_ports i_gpmc_oe_n]
 set_property IOSTANDARD LVCMOS18 [get_ports i_gpmc_we_n]
 set_property IOSTANDARD LVCMOS18 [get_ports {i_gpmc_be_n[0]}]
@@ -36,7 +37,8 @@ set_property IOSTANDARD LVCMOS18 [get_ports {io_gpmc_ad[14]}]
 set_property IOSTANDARD LVCMOS18 [get_ports {io_gpmc_ad[15]}]
 set_property IOSTANDARD LVCMOS18 [get_ports {o_sys_nirq[0]}]
 set_property IOSTANDARD LVCMOS18 [get_ports {o_sys_nirq[1]}]
-set_property IOSTANDARD LVCMOS18 [get_ports {i_gpmc_clk}]
+#set_property IOSTANDARD LVCMOS18 [get_ports {i_gpmc_clk}]
+set_property IOSTANDARD LVCMOS18 [get_ports {o_vin_hsync}]
 
 #############################################################
 # VIDEO INTERFACE
