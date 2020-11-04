@@ -35,6 +35,7 @@ entity vip_sim is
 	);
 	port (
 		i_clk         : in std_logic; -- reference clock, 148.5 MHz for 60 Hz timing with no adjustments
+		i_go          : in std_logic; -- when high, generate frames, when low, stop after frame completes
 		o_vin_hsync   : out std_logic := '0'; -- external sync option (active high)
 		o_vin_vsync   : out std_logic := '0'; -- external sync option (active high)
 		o_vin_d       : out std_logic_vector(23 downto 0);
@@ -65,8 +66,9 @@ architecture rtl of vip_sim is
 	signal s_rom_g : color_rom := (0 => x"EB", 1 => x"EB", 2 => x"EB", 3 => x"EB",
 	                               4 => x"10", 5 => x"10", 6 => x"10", 7 => x"10");
 	signal s_rom_b : color_rom := (0 => x"EB", 1 => x"10", 2 => x"EB", 3 => x"10",
-								   4 => x"EB", 5 => x"10", 6 => x"EB", 7 => x"10");
+	                               4 => x"EB", 5 => x"10", 6 => x"EB", 7 => x"10");
 	signal s_color_lookup : unsigned(2 downto 0) := "000";
+	signal s_send_frame : std_logic := '0';
 
 	type line_state is (VBLANK_FRONT, ACTIVE, VBLANK_BACK);
 	signal s_line_state : line_state := VBLANK_FRONT;
@@ -118,6 +120,7 @@ begin
 				-- new line logic
 				if s_line_cnt = OUT_HEIGHT + V_PORCH_FRONT + V_PORCH_BACK then
 					s_line_cnt <= to_unsigned(1, s_line_cnt'length);
+					s_send_frame <= i_go;
 				else
 					s_line_cnt <= s_line_cnt + 1;
 				end if;
@@ -139,28 +142,28 @@ begin
 
 			case s_line_state is
 				when VBLANK_FRONT =>
-					o_vin_hsync <= '0';
+					o_vin_vsync <= '0';
 					if s_line_cnt = V_PORCH_FRONT then
 						s_line_state <= ACTIVE;
 						s_SAV <= x"80"; -- H=0, V=0, H=0 plus protection bits
 						s_EAV <= x"9D"; -- F=1, V=0, H=1 plus protection bits
 					end if;
 				when ACTIVE =>
-					o_vin_hsync <= '1';
+					o_vin_vsync <= s_send_frame;
 					if s_line_cnt = V_PORCH_FRONT + OUT_HEIGHT then
 						s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
 						s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
 						s_line_state <= VBLANK_BACK;
 					end if;
 				when VBLANK_BACK =>
-					o_vin_hsync <= '0';
+					o_vin_vsync <= '0';
 					if s_line_cnt = V_PORCH_FRONT + OUT_HEIGHT + V_PORCH_BACK then
 						s_line_state <= VBLANK_FRONT;
 						s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
 						s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
 					end if;
 				when others =>
-					o_vin_hsync <= '0';
+					o_vin_vsync <= '0';
 					s_SAV <= x"AB"; -- H=0, V=1, H=0 plus protection bits
 					s_EAV <= x"B6"; -- H=0, V=1, H=1 plus protection bits
 					s_line_state <= VBLANK_FRONT;
@@ -168,7 +171,9 @@ begin
 
 			-- generate codes
 			-- First word in SAV or EAV SYNC CODE
-			if s_col_cnt = 1 or s_col_cnt = (H_PORCH-3) then
+			if s_send_frame = '0' then
+				s_data <= x"00" & x"00" & x"00";
+			elsif s_col_cnt = 1 or s_col_cnt = (H_PORCH-3) then
 				s_data <= x"FF" & x"FF" & x"FF";
 			-- Second word in SAV or EAV SYNC CODE
 			elsif s_col_cnt = 2 or s_col_cnt = (H_PORCH-2) then
@@ -190,7 +195,9 @@ begin
 				s_data <= s_rom_r(to_integer(s_color_lookup)) & s_rom_g(to_integer(s_color_lookup)) & s_rom_b(to_integer(s_color_lookup));
 			end if;
 
-			if s_col_cnt < H_PORCH then
+			if s_send_frame = '0' then
+				o_vin_hsync <= '0';
+			elsif s_col_cnt < H_PORCH then
 				o_vin_hsync <= '0';
 			else
 				o_vin_hsync <= '1';

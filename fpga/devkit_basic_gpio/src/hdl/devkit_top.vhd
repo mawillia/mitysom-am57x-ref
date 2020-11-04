@@ -165,10 +165,10 @@ architecture rtl of devkit_top is
 
 	constant APPLICATION_ID: std_logic_vector(7 downto 0) := std_logic_vector(to_unsigned( 1, 8));
 	constant VERSION_MAJOR:  std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
-	constant VERSION_MINOR:  std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 0, 4));
+	constant VERSION_MINOR:  std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
 	constant YEAR:           std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(20, 5));
-	constant MONTH:          std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(07, 4));
-	constant DAY:            std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(21, 5));
+	constant MONTH:          std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(11, 4));
+	constant DAY:            std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(04, 5));
 
 	component xilinx_pcie_2_1_ep_7x is
 		generic (
@@ -210,6 +210,7 @@ architecture rtl of devkit_top is
 		);
 		port (
 			i_clk         : in std_logic; -- reference clock, 148.5 MHz for 60 Hz timing
+			i_go          : in std_logic; -- when high, generate frames, when low, stop after frame completes
 			o_vin_hsync   : out std_logic := '0'; -- external sync option (active high)
 			o_vin_vsync   : out std_logic := '0'; -- external sync option (active high)
 			o_vin_d       : out std_logic_vector(23 downto 0);
@@ -229,12 +230,16 @@ architecture rtl of devkit_top is
 	
 	signal s_irq_map : bus16_vector(1 downto 0) := (others=>(others=>'0'));
 	
-	constant NUM_IO : integer := 98;
+	constant NUM_IO : integer := 99;
 
 	-- gpio pins
 	signal t_gpio     : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
 	signal s_gpio_out : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
 	signal s_gpio_in  : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
+
+	signal s_vip_m, s_vip_go : std_logic := '0';
+	-- debug
+	signal s_vid_hsync, s_vid_vsync : std_logic := '0';
 	
 
 begin
@@ -273,12 +278,23 @@ begin
 		)
 		port map (
 			i_clk         => s_vip_clk,
+			i_go          => s_vip_go,
 			-- VIN4A interface (MUST USE EMBEDDED SYNC MODES)
-			o_vin_hsync   => o_vin_hsync,
-			o_vin_vsync   => o_vin_vsync,
+			o_vin_hsync   => s_vid_hsync,
+			o_vin_vsync   => s_vid_vsync,
 			o_vin_d       => o_vin_d,
 			o_vin_clk     => o_vin_clk
 		);
+
+	o_vin_hsync <= s_vid_hsync;
+	o_vin_vsync <= s_vid_vsync;
+	go_resample : process(s_vip_clk)
+	begin
+		if rising_edge(s_vip_clk) then
+			s_vip_go <= s_vip_m;
+		end if;
+	end process go_resample;
+
 
 	async_iface : GPMC_iface
 		generic map ( 
@@ -368,19 +384,19 @@ begin
 			o_irq           => s_irq_map(0)(1),
 			i_ilevel        => "00",
 			i_ivector       => "0001",  
-			i_io(33 downto 0)  => s_gpio_in(97 downto 64),
-			i_io(47 downto 34) => (others=>'0'),
-			t_io(33 downto 0)  => t_gpio(97 downto 64),
-			t_io(47 downto 34) => open,
-			o_io(33 downto 0)  => s_gpio_out(97 downto 64),
-			o_io(47 downto 34) => open,
+			i_io(34 downto 0)  => s_gpio_in(98 downto 64),
+			i_io(47 downto 35) => (others=>'0'),
+			t_io(34 downto 0)  => t_gpio(98 downto 64),
+			t_io(47 downto 35) => open,
+			o_io(34 downto 0)  => s_gpio_out(98 downto 64),
+			o_io(47 downto 35) => open,
 			i_initdir          => (others=>'0'),
 			i_initoutval       => (others=>'0')
 		);
 
 	-- IO assignments here
 	LA18_N <= s_gpio_out(0) when t_gpio(0)   = '0' else 'Z';
-	LA18_P <= s_gpio_out(1) when t_gpio(1)   = '0' else 'Z';
+	LA18_P <= s_gpio_out(1) when t_gpio(1)   = '0' else 'Z';	
 	LA23_N <= s_gpio_out(2) when t_gpio(2)   = '0' else 'Z';
 	LA23_P <= s_gpio_out(3) when t_gpio(3)   = '0' else 'Z';
 	LA14_N <= s_gpio_out(4) when t_gpio(4)   = '0' else 'Z';
@@ -475,6 +491,9 @@ begin
 	HA03_N <= s_gpio_out(93) when t_gpio(93) = '0' else 'Z';
 	HA06_P <= s_gpio_out(94) when t_gpio(94) = '0' else 'Z';
 	HA06_N <= s_gpio_out(95) when t_gpio(95) = '0' else 'Z';
+	-- (96) id input only
+	-- (97) id input only
+	s_vip_m <= s_gpio_out(98);
 
 	s_gpio_in(0) <= LA18_N;
 	s_gpio_in(1) <= LA18_P;
@@ -574,5 +593,7 @@ begin
 	s_gpio_in(95) <= HA06_N;
 	s_gpio_in(96) <= i_id(0);
 	s_gpio_in(97) <= i_id(1);
+	s_gpio_in(98) <= s_vip_m; -- loopback internal control signal
+
 
 end rtl;
