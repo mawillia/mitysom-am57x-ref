@@ -69,4 +69,4 @@ write_bitstream -force -bin_file $outputDir/devkit.bit
 # Generate file for use with uBoot
 # TODO unclear if -disablebitswap is required
 write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/devkit.bit" -verbose $outputDir/devkit_fpga_uboot.bin
-
+exit
