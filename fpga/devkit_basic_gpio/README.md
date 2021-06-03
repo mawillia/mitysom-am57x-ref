@@ -32,6 +32,7 @@ This project provides the following capability for the FPGA:
 - the GPMC register interface, including a base module and GPIO
 - GPIO connections to the FMC connector
 - Video simulation to drive the AM57x video input port in 24 bit mode
+- XADC core for reading the dedicated analog inputs (VN_O and VP_0)
 
 Stuff remaining / TODO
 - Route interrupts from FPGA to processor
@@ -49,9 +50,12 @@ In addition, common ip files (provided by Critical Link) are included from ../ip
 │   ├── clk_wiz_0
 │   │   ├── clk_wiz_0.xci
 │   │   ├── clk_wiz_0.xml
-│   └── pcie_7x_0
-│       ├── pcie_7x_0.xci
-│       ├── pcie_7x_0.xml
+│   ├── pcie_7x_0
+│   │   ├── pcie_7x_0.xci
+│   │   ├── pcie_7x_0.xml
+│   └── xadc_wiz_0
+│       ├── xadc_wiz_0.xci
+│       ├── xadc_wiz_0.xml
 ├── README.md                       // This document
 ├── script
 │   └── gen_devkit_project.tcl      // Script to build Vivado Project

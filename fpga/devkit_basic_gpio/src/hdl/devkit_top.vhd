@@ -60,6 +60,10 @@ entity devkit_top is
 		sys_clk_n                     : in std_logic; -- 100 MHz clock used for PCIe
 		sys_rst_n                     : in std_logic;
 
+		-- ADC signals
+		VN_0                          : in std_logic;
+		VP_0                          : in std_logic;
+
 		-- HSMC connector
 		LA18_N                        : inout std_logic;
 		LA18_P                        : inout std_logic;
@@ -217,6 +221,26 @@ architecture rtl of devkit_top is
 			o_vin_clk     : out std_logic
 		);
 	end component vip_sim;
+
+	component xadc_wiz_0 is
+		port (
+			daddr_in        : in  STD_LOGIC_VECTOR (6 downto 0);     -- Address bus for the dynamic reconfiguration port
+			den_in          : in  STD_LOGIC;                         -- Enable Signal for the dynamic reconfiguration port
+			di_in           : in  STD_LOGIC_VECTOR (15 downto 0);    -- Input data bus for the dynamic reconfiguration port
+			dwe_in          : in  STD_LOGIC;                         -- Write Enable for the dynamic reconfiguration port
+			do_out          : out  STD_LOGIC_VECTOR (15 downto 0);   -- Output data bus for dynamic reconfiguration port
+			drdy_out        : out  STD_LOGIC;                        -- Data ready signal for the dynamic reconfiguration port
+			dclk_in         : in  STD_LOGIC;                         -- Clock input for the dynamic reconfiguration port
+			busy_out        : out  STD_LOGIC;                        -- ADC Busy signal
+			channel_out     : out  STD_LOGIC_VECTOR (4 downto 0);    -- Channel Selection Outputs
+			eoc_out         : out  STD_LOGIC;                        -- End of Conversion Signal
+			eos_out         : out  STD_LOGIC;                        -- End of Sequence Signal
+			alarm_out       : out STD_LOGIC;                         -- OR'ed output of all the Alarms
+			vp_in           : in  STD_LOGIC;                         -- Dedicated Analog Input Pair
+			vn_in           : in  STD_LOGIC
+							
+	     	);
+	end component xadc_wiz_0;
 	
 	signal sys_clk,clk_100,clk_200,clk_150 : std_logic := '1';
 	signal s_vip_clk : std_logic := '0';
@@ -394,7 +418,26 @@ begin
 			i_initoutval       => (others=>'0')
 		);
 
-	-- IO assignments here
+	
+
+	xadc : xadc_wiz_0
+                port map (
+                        daddr_in        => '0' & s_core_addr,
+                        den_in          => s_core_cs(3),
+                        di_in           => s_core_edi,
+                        dwe_in          => s_core_wr,
+                        do_out          => s_core_edo(3),
+                        drdy_out        => open,
+                        dclk_in         => clk_100,
+                        busy_out        => open,
+                        channel_out     => open,
+                        eoc_out         => open,
+                        eos_out         => open,
+                        alarm_out       => open,
+                        vp_in           => VP_0,
+                        vn_in           => VN_0
+                 );
+
 	LA18_N <= s_gpio_out(0) when t_gpio(0)   = '0' else 'Z';
 	LA18_P <= s_gpio_out(1) when t_gpio(1)   = '0' else 'Z';	
 	LA23_N <= s_gpio_out(2) when t_gpio(2)   = '0' else 'Z';
