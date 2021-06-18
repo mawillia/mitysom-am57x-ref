@@ -196,3 +196,7 @@ set_property PACKAGE_PIN L2 [get_ports {HA01_N}]
 set_property PACKAGE_PIN D10 [get_ports {i_id[0]}]
 set_property PACKAGE_PIN H14 [get_ports {i_id[1]}]
 
+#############################################################
+# ADC
+set_property PACKAGE_PIN L9 [get_ports VN_0]
+set_property PACKAGE_PIN K10 [get_ports VP_0]

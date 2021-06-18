@@ -31,6 +31,10 @@ synth_ip [get_ips pcie_7x_0]
 get_files -all -of_objects [get_files /ip/pcie_7x_0/pcie_7x_0.xci]
 #
 #
+read_ip ./ip/xadc_wiz_0/xadc_wiz_0.xci
+generate_target all [get_ips xadc_wiz_0]
+synth_ip [get_ips xadc_wiz_0]
+get_files -all -of_objects [get_files ./ip/xadc_wiz_0/xadc_wiz_0.xci]
 
 #
 #

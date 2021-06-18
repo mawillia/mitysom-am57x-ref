@@ -25,6 +25,7 @@
 #
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/ip/clk_wiz_0/clk_wiz_0.xci"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/ip/pcie_7x_0/pcie_7x_0.xci"
+#    "C:/projects/mitysom-am57x/hw/fpga/devkit/ip/pcie_7x_0/xadc_wiz_0.xci"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/hdl/pcie_7x_0_pipe_clock.v"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/hdl/EP_MEM.vhd"
 #    "C:/projects/mitysom-am57x/hw/fpga/devkit/src/hdl/PIO.vhd"
@@ -180,6 +181,7 @@ add_files -norecurse -fileset $obj $files
 set files [list \
  [file normalize "${origin_dir}/ip/clk_wiz_0/clk_wiz_0.xci" ]\
  [file normalize "${origin_dir}/ip/pcie_7x_0/pcie_7x_0.xci" ]\
+ [file normalize "${origin_dir}/ip/xadc_wiz_0/xadc_wiz_0.xci" ]\
  [file normalize "${origin_dir}/src/hdl/pcie_7x_0_pipe_clock.v" ]\
  [file normalize "${origin_dir}/src/hdl/EP_MEM.vhd" ]\
  [file normalize "${origin_dir}/src/hdl/PIO.vhd" ]\
@@ -238,6 +240,14 @@ set_property -name "generate_files_for_reference" -value "0" -objects $file_obj
 set_property -name "registered_with_manager" -value "1" -objects $file_obj
 if { ![get_property "is_locked" $file_obj] } {
   set_property -name "synth_checkpoint_mode" -value "Singular" -objects $file_obj
+}
+
+set file "xadc_wiz_0/xadc_wiz_0.xci"
+set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$file"]]
+set_property -name "generate_files_for_reference" -value "0" -objects $file_obj
+set_property -name "registered_with_manager" -value "1" -objects $file_obj
+if { ![get_property "is_locked" $file_obj]  } {
+    set_property -name "synth_checkpoint_mode" -value "Singular" -objects $file_obj
 }
 
 set file "hdl/EP_MEM.vhd"

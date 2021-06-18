@@ -177,3 +177,6 @@ set_property IOSTANDARD LVCMOS18 [get_ports {o_cpu_nmi_n}]
 # bank 15
 set_property IOSTANDARD LVCMOS18 [get_ports {i_id[0]}]
 set_property IOSTANDARD LVCMOS18 [get_ports {i_id[1]}]
+# ADC
+set_property IOSTANDARD LVCMOS18 [get_ports VN_0]
+set_property IOSTANDARD LVCMOS18 [get_ports VP_0]
