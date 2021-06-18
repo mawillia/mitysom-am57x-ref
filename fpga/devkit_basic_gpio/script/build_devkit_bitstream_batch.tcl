@@ -72,5 +72,5 @@ write_xdc $outputDir/post_route_impl.xdc -mode port -force
 write_bitstream -force -bin_file $outputDir/devkit.bit
 # Generate file for use with uBoot
 # TODO unclear if -disablebitswap is required
-write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/devkit.bit" -verbose $outputDir/devkit_fpga_uboot.bin
+write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/devkit.bit" -verbose $outputDir/fpga_7a15t.bin
 exit
