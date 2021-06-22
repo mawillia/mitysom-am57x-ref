@@ -1,17 +1,13 @@
---- Title: base_module.vhd
+--- Title: pcie_dma_example_top.vhd
 --- Description: 
 ---
 ---     o  0
----     | /       Copyright (c) 2020
+---     | /       Copyright (c) 2021
 ---    (CL)---o   Critical Link, LLC
 ---      \
 ---       O
 ---
 --- Company: Critical Link, LLC.
---- Date: 7/13/2020
---- Version: 1.00
---- Revisions: 
----   1.00 - Initial release.
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -20,201 +16,166 @@ use IEEE.NUMERIC_STD.ALL;
 library WORK;
 use WORK.MitySOM_AM57_pkg.ALL;
 
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
+library UNISIM;
+use UNISIM.VComponents.all;
 
 entity pcie_dma_example_top is
-	generic ( DECODE_BITS   : integer := 2 ) ;
-	port (
+	generic 
+	( 
+		DECODE_BITS : integer := 2 
+	);
+	port 
+	(
 		-- GPMC interface
-		-- i_gpmc_clk    : in  std_logic;
-		i_gpmc_cs_n   : in  std_logic;
-		io_gpmc_ad    : inout std_logic_vector(15 downto 0);
+		-- i_gpmc_clk : in  std_logic;
+		i_gpmc_cs_n : in  std_logic;
+		io_gpmc_ad : inout std_logic_vector(15 downto 0);
 		-- i_gpmc_adv_n  : in  std_logic; -- address valid
-		i_gpmc_oe_n   : in  std_logic; -- output enable
-		i_gpmc_we_n   : in  std_logic; -- write enable
-		i_gpmc_be_n   : in  std_logic_vector(1 downto 0); -- byte enable
+		i_gpmc_oe_n : in  std_logic; -- output enable
+		i_gpmc_we_n : in  std_logic; -- write enable
+		i_gpmc_be_n : in  std_logic_vector(1 downto 0); -- byte enable
 		
 		-- VIN4A interface (MUST USE EMBEDDED SYNC MODES)
-		o_vin_hsync   : out std_logic := '0'; -- external sync option (active high)
-		o_vin_vsync   : out std_logic := '0'; -- external sync option (active high)
-		o_vin_d       : out std_logic_vector(23 downto 0);
-		o_vin_clk     : out std_logic;
+		o_vin_hsync : out std_logic := '0'; -- external sync option (active high)
+		o_vin_vsync : out std_logic := '0'; -- external sync option (active high)
+		o_vin_d : out std_logic_vector(23 downto 0);
+		o_vin_clk : out std_logic;
 		
 		-- irq interface
-		o_sys_nirq    : out std_logic_vector(1 downto 0);
-		o_cpu_nmi_n   : out std_logic;
+		o_sys_nirq : out std_logic_vector(1 downto 0);
+		o_cpu_nmi_n : out std_logic;
 
 		-- misc id pins
-		i_id          : in std_logic_vector(1 downto 0);
+		i_id : in std_logic_vector(1 downto 0);
 
 		-- PCIe x2 signals
-		pci_exp_txp                   : out std_logic_vector(1 downto 0);
-		pci_exp_txn                   : out std_logic_vector(1 downto 0);
-		pci_exp_rxp                   : in  std_logic_vector(1 downto 0);
-		pci_exp_rxn                   : in  std_logic_vector(1 downto 0);
+		pci_exp_txp : out std_logic_vector(1 downto 0);
+		pci_exp_txn : out std_logic_vector(1 downto 0);
+		pci_exp_rxp : in  std_logic_vector(1 downto 0);
+		pci_exp_rxn : in  std_logic_vector(1 downto 0);
 		
-		sys_clk_p                     : in std_logic; -- 100 MHz clock used for PCIe
-		sys_clk_n                     : in std_logic; -- 100 MHz clock used for PCIe
-		sys_rst_n                     : in std_logic;
+		sys_clk_p : in std_logic; -- 100 MHz clock used for PCIe
+		sys_clk_n : in std_logic; -- 100 MHz clock used for PCIe
+		sys_rst_n : in std_logic;
 
 		-- HSMC connector
-		LA18_N                        : inout std_logic;
-		LA18_P                        : inout std_logic;
-		LA23_N                        : inout std_logic;
-		LA23_P                        : inout std_logic;
-		LA14_N                        : inout std_logic;
-		LA14_P                        : inout std_logic;
-		LA17_N                        : inout std_logic;
-		LA17_P                        : inout std_logic;
-		LA10_N                        : inout std_logic;
-		LA10_P                        : inout std_logic;
-		LA13_P                        : inout std_logic;
-		LA13_N                        : inout std_logic;
-		LA06_P                        : inout std_logic;
-		LA06_N                        : inout std_logic;
-		LA09_N                        : inout std_logic;
-		LA09_P                        : inout std_logic;
-		LA02_N                        : inout std_logic;
-		LA02_P                        : inout std_logic;
-		LA05_N                        : inout std_logic;
-		LA05_P                        : inout std_logic;
-		LA00_N                        : inout std_logic;
-		LA00_P                        : inout std_logic;
-		LA01_N                        : inout std_logic;
-		LA01_P                        : inout std_logic;
-		LA28_N                        : inout std_logic;
-		LA28_P                        : inout std_logic;
-		LA26_P                        : inout std_logic;
-		LA26_N                        : inout std_logic;
-		LA31_P                        : inout std_logic;
-		LA31_N                        : inout std_logic;
-		LA27_P                        : inout std_logic;
-		LA27_N                        : inout std_logic;
-		LA30_N                        : inout std_logic;
-		LA30_P                        : inout std_logic;
-		LA25_P                        : inout std_logic;
-		LA25_N                        : inout std_logic;
-		LA33_P                        : inout std_logic;
-		LA33_N                        : inout std_logic;
-		LA24_N                        : inout std_logic;
-		LA24_P                        : inout std_logic;
-		LA32_N                        : inout std_logic;
-		LA32_P                        : inout std_logic;
-		LA29_N                        : inout std_logic;
-		LA29_P                        : inout std_logic;
-		HA00_N                        : inout std_logic;
-		HA00_P                        : inout std_logic;
-		HA01_P                        : inout std_logic;
-		HA01_N                        : inout std_logic;
-		LA21_N                        : inout std_logic;
-		LA21_P                        : inout std_logic;
-		LA22_N                        : inout std_logic;
-		LA22_P                        : inout std_logic;
-		LA19_P                        : inout std_logic;
-		LA19_N                        : inout std_logic;
-		LA20_N                        : inout std_logic;
-		LA20_P                        : inout std_logic;
-		LA15_N                        : inout std_logic;
-		LA15_P                        : inout std_logic;
-		LA16_N                        : inout std_logic;
-		LA16_P                        : inout std_logic;
-		LA11_N                        : inout std_logic;
-		LA11_P                        : inout std_logic;
-		LA12_N                        : inout std_logic;
-		LA12_P                        : inout std_logic;
-		LA07_N                        : inout std_logic;
-		LA07_P                        : inout std_logic;
-		LA08_N                        : inout std_logic;
-		LA08_P                        : inout std_logic;
-		LA04_N                        : inout std_logic;
-		LA04_P                        : inout std_logic;
-		LA03_N                        : inout std_logic;
-		LA03_P                        : inout std_logic;
-		HA12_P                        : inout std_logic;
-		HA12_N                        : inout std_logic;
-		HA13_P                        : inout std_logic;
-		HA13_N                        : inout std_logic;
-		HA08_N                        : inout std_logic;
-		HA08_P                        : inout std_logic;
-		HA09_P                        : inout std_logic;
-		HA09_N                        : inout std_logic;
-		HA07_N                        : inout std_logic;
-		HA07_P                        : inout std_logic;
-		HA04_P                        : inout std_logic;
-		HA04_N                        : inout std_logic;
-		HA05_P                        : inout std_logic;
-		HA05_N                        : inout std_logic;
-		HA11_P                        : inout std_logic;
-		HA11_N                        : inout std_logic;
-		HA10_P                        : inout std_logic;
-		HA10_N                        : inout std_logic;
-		HA02_N                        : inout std_logic;
-		HA02_P                        : inout std_logic;
-		HA03_P                        : inout std_logic;
-		HA03_N                        : inout std_logic;
-		HA06_P                        : inout std_logic;
-		HA06_N                        : inout std_logic
+		LA18_N : inout std_logic;
+		LA18_P : inout std_logic;
+		LA23_N : inout std_logic;
+		LA23_P : inout std_logic;
+		LA14_N : inout std_logic;
+		LA14_P : inout std_logic;
+		LA17_N : inout std_logic;
+		LA17_P : inout std_logic;
+		LA10_N : inout std_logic;
+		LA10_P : inout std_logic;
+		LA13_P : inout std_logic;
+		LA13_N : inout std_logic;
+		LA06_P : inout std_logic;
+		LA06_N : inout std_logic;
+		LA09_N : inout std_logic;
+		LA09_P : inout std_logic;
+		LA02_N : inout std_logic;
+		LA02_P : inout std_logic;
+		LA05_N : inout std_logic;
+		LA05_P : inout std_logic;
+		LA00_N : inout std_logic;
+		LA00_P : inout std_logic;
+		LA01_N : inout std_logic;
+		LA01_P : inout std_logic;
+		LA28_N : inout std_logic;
+		LA28_P : inout std_logic;
+		LA26_P : inout std_logic;
+		LA26_N : inout std_logic;
+		LA31_P : inout std_logic;
+		LA31_N : inout std_logic;
+		LA27_P : inout std_logic;
+		LA27_N : inout std_logic;
+		LA30_N : inout std_logic;
+		LA30_P : inout std_logic;
+		LA25_P : inout std_logic;
+		LA25_N : inout std_logic;
+		LA33_P : inout std_logic;
+		LA33_N : inout std_logic;
+		LA24_N : inout std_logic;
+		LA24_P : inout std_logic;
+		LA32_N : inout std_logic;
+		LA32_P : inout std_logic;
+		LA29_N : inout std_logic;
+		LA29_P : inout std_logic;
+		HA00_N : inout std_logic;
+		HA00_P : inout std_logic;
+		HA01_P : inout std_logic;
+		HA01_N : inout std_logic;
+		LA21_N : inout std_logic;
+		LA21_P : inout std_logic;
+		LA22_N : inout std_logic;
+		LA22_P : inout std_logic;
+		LA19_P : inout std_logic;
+		LA19_N : inout std_logic;
+		LA20_N : inout std_logic;
+		LA20_P : inout std_logic;
+		LA15_N : inout std_logic;
+		LA15_P : inout std_logic;
+		LA16_N : inout std_logic;
+		LA16_P : inout std_logic;
+		LA11_N : inout std_logic;
+		LA11_P : inout std_logic;
+		LA12_N : inout std_logic;
+		LA12_P : inout std_logic;
+		LA07_N : inout std_logic;
+		LA07_P : inout std_logic;
+		LA08_N : inout std_logic;
+		LA08_P : inout std_logic;
+		LA04_N : inout std_logic;
+		LA04_P : inout std_logic;
+		LA03_N : inout std_logic;
+		LA03_P : inout std_logic;
+		HA12_P : inout std_logic;
+		HA12_N : inout std_logic;
+		HA13_P : inout std_logic;
+		HA13_N : inout std_logic;
+		HA08_N : inout std_logic;
+		HA08_P : inout std_logic;
+		HA09_P : inout std_logic;
+		HA09_N : inout std_logic;
+		HA07_N : inout std_logic;
+		HA07_P : inout std_logic;
+		HA04_P : inout std_logic;
+		HA04_N : inout std_logic;
+		HA05_P : inout std_logic;
+		HA05_N : inout std_logic;
+		HA11_P : inout std_logic;
+		HA11_N : inout std_logic;
+		HA10_P : inout std_logic;
+		HA10_N : inout std_logic;
+		HA02_N : inout std_logic;
+		HA02_P : inout std_logic;
+		HA03_P : inout std_logic;
+		HA03_N : inout std_logic;
+		HA06_P : inout std_logic;
+		HA06_N : inout std_logic
 
-		);
+	);
 end pcie_dma_example_top;
 
 architecture rtl of pcie_dma_example_top is
 
-	constant APPLICATION_ID: std_logic_vector(7 downto 0) := std_logic_vector(to_unsigned( 1, 8));
-	constant VERSION_MAJOR:  std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
-	constant VERSION_MINOR:  std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
-	constant YEAR:           std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(20, 5));
-	constant MONTH:          std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(11, 4));
-	constant DAY:            std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(04, 5));
+	------------------------------------
+	-- Constants
+	------------------------------------
+	constant APPLICATION_ID : std_logic_vector(7 downto 0) := std_logic_vector(to_unsigned( 1, 8));
+	constant VERSION_MAJOR : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
+	constant VERSION_MINOR : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
+	constant YEAR : std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(20, 5));
+	constant MONTH : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(11, 4));
+	constant DAY : std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(04, 5));
 
-	component pcie_dma is
-		generic (
-			INIT_PATTERN_WIDTH            : integer := 8;
-			INIT_PATTERN1                 : std_logic_vector(7 downto 0) := X"12";
-			INIT_PATTERN2                 : std_logic_vector(7 downto 0) := X"9a";
-			PCIE_EXT_CLK                  : string := "TRUE";  -- Use External Clocking Module
-			PCIE_EXT_GT_COMMON            : string := "FALSE";
-			PL_FAST_TRAIN                 : string := "FALSE";
-			C_DATA_WIDTH                  : integer range 64 to 128 := 64
-		);
-		port (
-			i_reg_clk             : in  std_logic;
-			i_ABus          : in  std_logic_vector(5 downto 0);
-			i_DBus          : in  std_logic_vector(15 downto 0);
-			o_DBus          : out std_logic_vector(15 downto 0);
-			i_wr_en         : in  std_logic;
-			i_rd_en         : in  std_logic;
-			i_cs            : in  std_logic;
-			o_irq           : out std_logic := '0';
-			i_ilevel        : in  std_logic_vector(1 downto 0) := "00";      
-			i_ivector       : in  std_logic_vector(3 downto 0) := "0000";   
-
-			pci_exp_txp                   : out std_logic_vector(1 downto 0);
-			pci_exp_txn                   : out std_logic_vector(1 downto 0);
-			pci_exp_rxp                   : in  std_logic_vector(1 downto 0);
-			pci_exp_rxn                   : in  std_logic_vector(1 downto 0);
-		
-			sys_clk_p                     : in std_logic;
-			sys_clk_n                     : in std_logic;
-			sys_rst_n                     : in std_logic;
-			o_sys_clk                     : out std_logic
-		);
-	end component pcie_dma;
-	
-	component clk_wiz_0 is
-		Port ( 
-			clk_out1 : out STD_LOGIC;
-			clk_out2 : out STD_LOGIC;
-			clk_out3 : out STD_LOGIC;
-			locked : out STD_LOGIC;
-			clk_in1 : in STD_LOGIC
-		);
-	end component clk_wiz_0;
-	
+	------------------------------------
+	-- Signals 
+	------------------------------------
 	signal sys_clk,clk_100,clk_200,clk_150 : std_logic := '1';
+	signal sys_rst_n_c : std_logic := '0';
 	signal s_vip_clk : std_logic := '0';
 	signal s_core_be : std_logic_vector(1 downto 0) := "00";
 	signal s_core_addr : std_logic_vector(5 downto 0) := (others=>'0');
@@ -225,6 +186,14 @@ architecture rtl of pcie_dma_example_top is
 	signal s_core_wr : std_logic := '0';
 	
 	signal s_irq_map : bus16_vector(1 downto 0) := (others=>(others=>'0'));
+
+	signal s_pcie_dma_axi_clk : std_logic; --! Data on *_axis_* is synchronous to this clock.
+
+	signal s_pcie_dma_i_axis_c2h_tdata : STD_LOGIC_VECTOR(63 DOWNTO 0) := x"B0BAB4B1DEADBEEF";
+	signal s_pcie_dma_i_axis_c2h_tlast : STD_LOGIC := '0';
+	signal s_pcie_dma_i_axis_c2h_tvalid : STD_LOGIC := '1';
+	signal s_pcie_dma_o_axis_c2h_tready : STD_LOGIC := '0';
+	signal s_pcie_dma_i_axis_c2h_tkeep : STD_LOGIC_VECTOR(7 DOWNTO 0) := (others => '0');
 	
 	constant NUM_IO : integer := 99;
 
@@ -233,48 +202,83 @@ architecture rtl of pcie_dma_example_top is
 	signal s_gpio_out : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
 	signal s_gpio_in  : std_logic_vector(NUM_IO-1 downto 0) := (others=>'0');
 
-	signal s_vip_m, s_vip_go : std_logic := '0';
-	-- debug
-	signal s_vid_hsync, s_vid_vsync : std_logic := '0';
+	signal s_vip_m : std_logic := '0';
+
+	------------------------------------
+	-- Components
+	------------------------------------
+	component clk_wiz_0 is
+		Port ( 
+			clk_out1 : out STD_LOGIC;
+			clk_out2 : out STD_LOGIC;
+			clk_out3 : out STD_LOGIC;
+			locked : out STD_LOGIC;
+			clk_in1 : in STD_LOGIC
+		);
+	end component clk_wiz_0;
+
+	component pcie_dma is
+		port (
+			i_reg_clk : in  std_logic;
+
+			i_reg_addr : in  std_logic_vector(5 downto 0);
+			i_reg_data : in  std_logic_vector(15 downto 0);
+			o_reg_data : out std_logic_vector(15 downto 0);
+			i_reg_wr : in  std_logic;
+			i_reg_rd : in  std_logic;
+			i_reg_cs : in  std_logic;
+
+			o_irq  : out std_logic := '0';
+			i_ilevel : in  std_logic_vector(1 downto 0) := "00";      
+			i_ivector : in  std_logic_vector(3 downto 0) := "0000";   
+
+			i_pcie_sys_clk : in std_logic; --! 100 MHz Clock use for PCIe
+			i_pcie_sys_rst_n : in std_logic;
+
+			--! PCIe pins:
+			pci_exp_txp : out std_logic_vector(1 downto 0);
+			pci_exp_txn : out std_logic_vector(1 downto 0);
+			pci_exp_rxp : in  std_logic_vector(1 downto 0);
+			pci_exp_rxn : in  std_logic_vector(1 downto 0);
+
+			o_axi_clk : out std_logic; --! Data on *_axis_* is synchronous to this clock.
+
+			--! Card (FPGA) to Host (AM57) data interface. This data will be DMA'ed to the AM57 RC (Memory Rd/Wr access L3_MAIN in AM57):
+			i_axis_c2h_tdata : IN STD_LOGIC_VECTOR(63 DOWNTO 0);
+			i_axis_c2h_tlast : IN STD_LOGIC;
+			i_axis_c2h_tvalid : IN STD_LOGIC;
+			o_axis_c2h_tready : OUT STD_LOGIC;
+			i_axis_c2h_tkeep : IN STD_LOGIC_VECTOR(7 DOWNTO 0)
+		);
+	end component pcie_dma;
 	
 
 begin
 
 	o_cpu_nmi_n <= '1'; -- NMI is not used in this project, but should be deasserted
+
+	refclk_ibuf : IBUFDS_GTE2
+	   port map(
+	     O       => sys_clk,
+	     ODIV2   => open,
+	     I       => sys_clk_p,
+	     IB      => sys_clk_n,
+	     CEB     => '0');
+
+	sys_reset_n_ibuf : IBUF
+	   port map(
+	     O       => sys_rst_n_c,
+	     I       => sys_rst_n);
 	
-	--! Infer the PCIe interface block.
-	PCIE_DMA_INST : pcie_dma
-		port map (
-			i_reg_clk => clk_100,
-
-			i_ABus => s_core_addr,
-			i_DBus => s_core_edi,
-			o_DBus => s_core_edo(3),
-			i_wr_en => s_core_wr,
-			i_rd_en => s_core_rd,
-			i_cs => s_core_cs(3),
-			o_irq => open,
-			i_ilevel => "00",
-			i_ivector => "0000",
-
-			pci_exp_txp                   => pci_exp_txp,
-			pci_exp_txn                   => pci_exp_txn,
-			pci_exp_rxp                   => pci_exp_rxp,
-			pci_exp_rxn                   => pci_exp_rxn,
-			sys_clk_p                     => sys_clk_p,
-			sys_clk_n                     => sys_clk_n,
-			sys_rst_n                     => sys_rst_n,
-			o_sys_clk                     => sys_clk
-		);
-		
 	mmcm : clk_wiz_0 
-	Port Map ( 
-		clk_out1 => clk_100,
-		clk_out2 => clk_200,
-		clk_out3 => clk_150,
-		locked => open,
-		clk_in1 => sys_clk
-	);
+		Port Map 
+		( 
+			clk_out1 => clk_100,
+			clk_out2 => clk_200,
+			clk_out3 => clk_150,
+			locked => open,
+			clk_in1 => sys_clk
+		);
 
 
 	async_iface : GPMC_iface
@@ -374,6 +378,43 @@ begin
 			i_initdir          => (others=>'0'),
 			i_initoutval       => (others=>'0')
 		);
+
+	--! Infer the PCIe interface block.
+	PCIE_DMA_INST : pcie_dma
+		port map (
+			i_reg_clk => clk_100,
+
+			i_reg_addr => s_core_addr,
+			i_reg_data => s_core_edi,
+			o_reg_data => s_core_edo(3),
+			i_reg_wr => s_core_wr,
+			i_reg_rd => s_core_rd,
+			i_reg_cs => s_core_cs(3),
+
+			o_irq => open,
+			i_ilevel => "00",
+			i_ivector => "0000",
+
+			i_pcie_sys_clk => sys_clk,
+			i_pcie_sys_rst_n => sys_rst_n_c,
+
+			pci_exp_txp => pci_exp_txp,
+			pci_exp_txn => pci_exp_txn,
+			pci_exp_rxp => pci_exp_rxp,
+			pci_exp_rxn => pci_exp_rxn,
+
+			o_axi_clk => s_pcie_dma_axi_clk,
+
+			--! Card (FPGA) to Host (AM57) data interface. This data will be DMA'ed to the AM57 RC (Memory Rd/Wr access L3_MAIN in AM57):
+			i_axis_c2h_tdata => s_pcie_dma_i_axis_c2h_tdata,
+			i_axis_c2h_tlast => s_pcie_dma_i_axis_c2h_tlast,
+			i_axis_c2h_tvalid => s_pcie_dma_i_axis_c2h_tvalid,
+			o_axis_c2h_tready => s_pcie_dma_o_axis_c2h_tready,
+			i_axis_c2h_tkeep => s_pcie_dma_i_axis_c2h_tkeep
+		);
+
+	-- TODO: Create pattern (PRBS?) stream component for testing PCIe DMA
+
 
 	-- IO assignments here
 	LA18_N <= s_gpio_out(0) when t_gpio(0)   = '0' else 'Z';
@@ -575,6 +616,5 @@ begin
 	s_gpio_in(96) <= i_id(0);
 	s_gpio_in(97) <= i_id(1);
 	s_gpio_in(98) <= s_vip_m; -- loopback internal control signal
-
 
 end rtl;

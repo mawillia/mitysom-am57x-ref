@@ -1,3 +1,18 @@
+--- Title: pcie_dma.vhd
+--- Description: 
+---
+---     o  0
+---     | /       Copyright (c) 2021
+---    (CL)---o   Critical Link, LLC
+---      \
+---       O
+---
+--- Company: Critical Link, LLC.
+-------------------------------------------------------------------------------
+-- Note: This started as demo code supplied by Xilinx for a an EP that acts
+--  as memory. It was been reworked to create a PCIe DMA example. Leaving
+--  original copyright, etc. from Xilinx below since some of this was their
+--  code.
 -------------------------------------------------------------------------------
 --
 -- (c) Copyright 2010-2011 Xilinx, Inc. All rights reserved.
@@ -64,82 +79,218 @@ use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
 
 entity pcie_dma is
-  generic (
-	INIT_PATTERN_WIDTH            : integer := 8;
-	INIT_PATTERN1                 : std_logic_vector(7 downto 0) := X"12";
-	INIT_PATTERN2                 : std_logic_vector(7 downto 0) := X"9a";
-	PCIE_EXT_CLK                  : string := "TRUE";  -- Use External Clocking Module
-	PCIE_EXT_GT_COMMON            : string := "FALSE";
-	PL_FAST_TRAIN                 : string := "FALSE";
-	C_DATA_WIDTH                  : integer range 64 to 128 := 64
-  );
-  port (
-	i_reg_clk             : in  std_logic;
-	i_ABus          : in  std_logic_vector(5 downto 0);
-	i_DBus          : in  std_logic_vector(15 downto 0);
-	o_DBus          : out std_logic_vector(15 downto 0);
-	i_wr_en         : in  std_logic;
-	i_rd_en         : in  std_logic;
-	i_cs            : in  std_logic;
-	o_irq           : out std_logic := '0';
-	i_ilevel        : in  std_logic_vector(1 downto 0) := "00";      
-	i_ivector       : in  std_logic_vector(3 downto 0) := "0000";   
+	port (
+		i_reg_clk : in  std_logic;
 
-	pci_exp_txp                   : out std_logic_vector(1 downto 0);
-	pci_exp_txn                   : out std_logic_vector(1 downto 0);
-	pci_exp_rxp                   : in  std_logic_vector(1 downto 0);
-	pci_exp_rxn                   : in  std_logic_vector(1 downto 0);
+		i_reg_addr : in  std_logic_vector(5 downto 0);
+		i_reg_data : in  std_logic_vector(15 downto 0);
+		o_reg_data : out std_logic_vector(15 downto 0);
+		i_reg_wr : in  std_logic;
+		i_reg_rd : in  std_logic;
+		i_reg_cs : in  std_logic;
 
-	sys_clk_p                     : in std_logic;
-	sys_clk_n                     : in std_logic;
-	sys_rst_n                     : in std_logic;
+		o_irq  : out std_logic := '0';
+		i_ilevel : in  std_logic_vector(1 downto 0) := "00";      
+		i_ivector : in  std_logic_vector(3 downto 0) := "0000";   
+		      
+		i_pcie_sys_clk : in std_logic; --! 100 MHz Clock use for PCIe
+		i_pcie_sys_rst_n : in std_logic;
 
-	o_sys_clk                       : out std_logic
-);
+		--! PCIe pins:
+		pci_exp_txp : out std_logic_vector(1 downto 0);
+		pci_exp_txn : out std_logic_vector(1 downto 0);
+		pci_exp_rxp : in  std_logic_vector(1 downto 0);
+		pci_exp_rxn : in  std_logic_vector(1 downto 0);
+
+		o_axi_clk : out std_logic; --! Data on *_axis_* is synchronous to this clock.
+
+		--! Card (FPGA) to Host (AM57) data interface. This data will be DMA'ed to the AM57 RC (Memory Rd/Wr access L3_MAIN in AM57):
+		--!  Note: There is no buffering of this data before it is sent to the PCIe core. It is
+		--!	unknown if a full TLP's worth of data needs to be sent without pauses or not.
+		--!	TODO: Update this comment once we know if there can be pauses or not.
+		--!	 Maybe we need a buffer in this core to counter this caveat??
+		i_axis_c2h_tdata : IN STD_LOGIC_VECTOR(63 DOWNTO 0); --! Data words to be written to AM57 Memory Space
+		i_axis_c2h_tlast : IN STD_LOGIC; --! TODO: should probably be doing something with this?!? (Error checking input stream against DMA descriptor??)
+		i_axis_c2h_tvalid : IN STD_LOGIC;
+		o_axis_c2h_tready : OUT STD_LOGIC;
+		i_axis_c2h_tkeep : IN STD_LOGIC_VECTOR(7 DOWNTO 0) --TODO: should probably be doing something with this?? (Error checking input stream against DMA descriptor??)
+	);
 end pcie_dma;
 
 architecture rtl of pcie_dma is
 	attribute DowngradeIPIdentifiedWarnings: string;
 	attribute DowngradeIPIdentifiedWarnings of rtl : architecture is "yes";
 
-	constant PCI_EXP_EP_OUI      : std_logic_vector(23 downto 0) := x"000A35";
-	constant PCI_EXP_EP_DSN_1    : std_logic_vector(31 downto 0) := x"01" & PCI_EXP_EP_OUI;
-	constant PCI_EXP_EP_DSN_2    : std_logic_vector(31 downto 0) := x"00000001";
+	function get_userClk2 (
+	  DIV2   : string;
+	  UC_FREQ  : integer)
+	  return integer is
+	begin  -- wr_mode
+	  if (DIV2 = "TRUE") then
+	    if (UC_FREQ = 4) then
+	      return 3;
+	    elsif (UC_FREQ = 3) then
+	      return 2;
+	    else
+	      return UC_FREQ;
+	    end if;
+	  else
+	    return UC_FREQ;
+	  end if;
+	end get_userClk2;
 
+	-- purpose: Determine Link Speed Configuration for GT
+	function get_gt_lnk_spd_cfg (
+	  constant simulation : string)
+	  return integer is
+	begin  -- get_gt_lnk_spd_cfg
+	  if (simulation = "TRUE") then
+	    return 2;
+	  else
+	    return 3;
+	  end if;
+	end get_gt_lnk_spd_cfg;
+
+	------------------------------------
+	-- Constants
+	------------------------------------
+	constant VER_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(0, 6));
+	constant CTRL_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(1, 6));
+
+	constant TX_DMA_START_ADDR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(2, 6));
+	constant TX_DMA_START_ADDR_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(3, 6));
+
+	constant TX_DMA_TOTAL_WORDS_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(4, 6));
+	constant TX_DMA_TOTAL_WORDS_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(5, 6));
+
+	constant TX_TLP_MAX_WORDS_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(6, 6));
+
+	constant RX_TLP_DATA_LO_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(8, 6));
+	constant RX_TLP_DATA_LO_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(9, 6));
+	constant RX_TLP_DATA_HI_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(10, 6));
+	constant RX_TLP_DATA_HI_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(11, 6));
+
+	constant RX_TLP_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(12, 6));
+
+	constant TX_WORD_CNT_TOTAL_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(14, 6));
+	constant TX_WORD_CNT_TOTAL_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(15, 6));
+
+	constant TX_DMA_WORDS_REMAIN_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(16, 6));
+	constant TX_DMA_WORDS_REMAIN_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(17, 6));
+
+
+--TODO: interrupts...
+--	Can we gen interrupt after final TLP sent. Is this a race condition?
+--	What about MSI option?
+
+
+	constant PCI_EXP_EP_OUI : std_logic_vector(23 downto 0) := x"000A35";
+	constant PCI_EXP_EP_DSN_1 : std_logic_vector(31 downto 0) := x"01" & PCI_EXP_EP_OUI;
+	constant PCI_EXP_EP_DSN_2 : std_logic_vector(31 downto 0) := x"00000001";
+
+	constant s_axi_clk_FREQ : integer := 2;
+	constant s_axi_clk2_DIV2 : string  := "FALSE";
+	constant USERCLK2_FREQ : integer := get_userClk2(s_axi_clk2_DIV2, s_axi_clk_FREQ);
+	constant LNK_SPD : integer := get_gt_lnk_spd_cfg("FALSE");
+
+	------------------------------------
+	-- Signals 
+	------------------------------------
+	signal s_srst_reg : std_logic := '0';
+	signal s_srst_meta : std_logic := '0';
 	signal s_srst : std_logic := '0';
 
-	signal s_go : std_logic := '0';
-	signal s_go_meta : std_logic := '0';
-	signal s_go_r1 : std_logic := '0';
-	signal s_go_r2 : std_logic := '0';
+	signal s_tx_dma_go_reg : std_logic := '0';
+	signal s_tx_dma_go_meta : std_logic := '0';
+	signal s_tx_dma_go: std_logic := '0';
+	signal s_tx_dma_go_r1 : std_logic := '0';
 
-	signal s_td : std_logic := '0';
-	signal s_ep : std_logic := '0';
+	type t_tx_tlp_state is 
+		(
+			TX_TLP_IDLE_STATE,
+			TX_TLP_CLOCK0_STATE, -- First 64 bits of TLP data as seen in Figure 3-2 in 7 Series FPGAs Integrated Block for PCI Express v3.3 LogiCORE IP Product Guide
+			TX_TLP_CLOCK1_STATE, -- Second 64 bits of TLP data as seen in Figure 3-2 in 7 Series FPGAs Integrated Block for PCI Express v3.3 LogiCORE IP Product Guide
+			TX_TLP_DATA_STATE -- Sending remaing 32-bit data words of TLP
+		);
+	signal s_tx_tlp_state : t_tx_tlp_state := TX_TLP_IDLE_STATE;
+	signal s_tx_tlp_state_meta : t_tx_tlp_state := TX_TLP_IDLE_STATE;
 
-	signal s_attr : std_logic_vector(1 downto 0) := (others => '0');
-	signal s_length : std_logic_vector(9 downto 0) := (others => '0');
+	signal s_tx_dma_total_words_reg : std_logic_vector(31 downto 0) := (others => '0'); -- Total number of words to transmit as part of next Card (FPGA) to Host (AM57) DMA request
+	signal s_tx_dma_total_words_meta : unsigned(31 downto 0) := (others => '0');
 
-	signal s_fmt : std_logic_vector(1 downto 0) := (others => '0');
-	signal s_type : std_logic_vector(4 downto 0) := (others => '0');
-	signal s_tc : std_logic_vector(2 downto 0) := (others => '0');
+	signal s_tx_dma_words_remain_cntr : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
+	signal s_tx_dma_words_remain_cntr_meta : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
+	signal s_tx_dma_words_remain_cntr_reg : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
 
-	signal s_tag : std_logic_vector(7 downto 0) := (others => '0');
-	signal s_last_dw_be : std_logic_vector(3 downto 0) := (others => '0');
-	signal s_1st_dw_be : std_logic_vector(3 downto 0) := (others => '0');
+	signal s_tx_tlp_max_num_words_reg : std_logic_vector(9 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(512, 10)); --! This 
+	signal s_tx_tlp_max_num_words_meta : unsigned(9 downto 0) := (others => '0');
+
+	signal s_tx_tlp_word_cntr : integer := 0; --! Number of 32-bit words remaining to transmit for current TLP.
+	
+	signal s_o_axis_c2h_tready : std_logic := '0'; --! Indicates if DMA to AM57 stream needs to pause.
+
+	signal s_tx_tlp_td : std_logic := '0';
+	signal s_tx_tlp_ep : std_logic := '0';
+
+	signal s_tx_tlp_attr : std_logic_vector(1 downto 0) := (others => '0');
+	signal s_tx_tlp_length : std_logic_vector(9 downto 0) := (others => '0');
+
+	signal s_tx_tlp_fmt : std_logic_vector(1 downto 0) := (others => '0');
+	signal s_tx_tlp_type : std_logic_vector(4 downto 0) := (others => '0');
+	signal s_tx_tlp_tc : std_logic_vector(2 downto 0) := (others => '0');
+
+	signal s_tx_tlp_tag : std_logic_vector(7 downto 0) := (others => '0');
+	signal s_tx_tlp_last_dw_be : std_logic_vector(3 downto 0) := (others => '0');
+	signal s_tx_tlp_1st_dw_be : std_logic_vector(3 downto 0) := (others => '0');
 
 	signal s_requestor_id : std_logic_vector(15 downto 0) := (others => '0');
 
-	signal s_addr : std_logic_vector(31 downto 0) := (others => '0');
-	signal s_data : std_logic_vector(31 downto 0) := (others => '0');
+	signal s_tx_dma_start_addr_reg : std_logic_vector(31 downto 0) := (others => '0');
+	signal s_tx_dma_start_addr_meta : unsigned(31 downto 0) := (others => '0');
+	signal s_tx_tlp_addr : unsigned(31 downto 0) := (others => '0');
 
-	signal s_tx_cntr : integer := 420;
+	signal s_i_axis_c2h_tdata : std_logic_vector(63 downto 0) := (others => '0'); 
+	signal s_i_axis_c2h_tdata_prev : std_logic_vector(63 downto 0) := (others => '0'); --! Most previously valid data from input stream to DMA to Host (AM57)
 
-	signal s_data_rx : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_rx_tlp_data : std_logic_vector(63 downto 0) := (others => '0'); --! Last valid Long Word received from PCIe core AXR RX interface (sent by Host (AM57))
+	signal s_rx_tlp_data_meta : std_logic_vector(63 downto 0) := (others => '0'); 
+	signal s_rx_tlp_data_reg : std_logic_vector(63 downto 0) := (others => '0'); 
+	signal s_rx_tlp_cntr : integer := 0;
+	signal s_rx_tlp_cntr_meta : integer := 0;
+	signal s_rx_tlp_cntr_reg : integer := 0;
 
-	signal s_rx_cntr : integer := 0;
+	signal s_tx_word_cnt_total : integer := 0;
+	signal s_tx_word_cnt_total_meta : integer := 0;
+	signal s_tx_word_cnt_total_reg : std_logic_vector(31 downto 0) := (others => '0');
 
-	signal s_dbg_cntr : integer := 0;
+	-- PCIe Core Common
+	signal s_axi_clk : std_logic;
+	signal user_reset : std_logic;
 
+	-- PCIe Core Tx
+	signal s_o_pcie_axis_tx_tready : std_logic := '0';
+	signal s_i_pcie_axis_tx_tuser : std_logic_vector (3 downto 0) := (others => '0');
+	signal s_i_pcie_axis_tx_tdata : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_i_pcie_axis_tx_tkeep : std_logic_vector(7 downto 0) := (others => '0');
+	signal s_i_pcie_axis_tx_tlast : std_logic := '0';
+	signal s_i_pcie_axis_tx_tvalid : std_logic := '0';
+
+	-- PCIe Core Rx
+	signal s_o_pcie_axis_rx_tdata : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_o_pcie_axis_rx_tkeep : std_logic_vector(7 downto 0) := (others => '0');
+	signal s_o_pcie_axis_rx_tlast : std_logic := '0';
+	signal s_o_pcie_axis_rx_tvalid : std_logic := '0';
+	signal s_i_pcie_axis_rx_tready : std_logic := '0';
+	signal s_o_pcie_axis_rx_tuser : std_logic_vector (21 downto 0) := (others => '0');
+
+	-- PCIe Core Config
+	signal cfg_bus_number : std_logic_vector(7 downto 0);
+	signal cfg_device_number : std_logic_vector(4 downto 0);
+	signal cfg_function_number : std_logic_vector(2 downto 0);
+
+	------------------------------------
+	-- Components
+	------------------------------------
 	component pcie_7x_0_support is
 	generic (
 	   LINK_CAP_MAX_LINK_WIDTH : integer := 8;       
@@ -377,7 +528,6 @@ architecture rtl of pcie_dma is
 	  pl_transmit_hot_rst                        : in std_logic;
 	  pl_downstream_deemph_source                : in std_logic;
 
-
 	  ----------------------------------------------------------------------------------------------------------------
 	  -- PCIe DRP (PCIe DRP) Interface                                                                             
 	  ----------------------------------------------------------------------------------------------------------------
@@ -389,336 +539,46 @@ architecture rtl of pcie_dma is
 	  pcie_drp_do                                : out std_logic_vector(15 downto 0);
 	  pcie_drp_rdy                               : out std_logic;
 
-
-
 	  ------------------------------------------------------------------------------------------------------------------
 	  -- System(SYS) Interface                                                                                      --
 	  ------------------------------------------------------------------------------------------------------------------
 	  sys_clk                                    : in std_logic;
 	  sys_rst_n                                  : in std_logic );
 
-	  end component;
-
-  constant TCQ                  : time           := 1 ps;
-
-   function get_userClk2 (
-    DIV2   : string;
-    UC_FREQ  : integer)
-    return integer is
-  begin  -- wr_mode
-    if (DIV2 = "TRUE") then
-      if (UC_FREQ = 4) then
-        return 3;
-      elsif (UC_FREQ = 3) then
-        return 2;
-      else
-        return UC_FREQ;
-      end if;
-    else
-      return UC_FREQ;
-    end if;
-  end get_userClk2;
-
-   -- purpose: Determine Link Speed Configuration for GT
-   function get_gt_lnk_spd_cfg (
-     constant simulation : string)
-     return integer is
-   begin  -- get_gt_lnk_spd_cfg
-     if (simulation = "TRUE") then
-       return 2;
-     else
-       return 3;
-     end if;
-   end get_gt_lnk_spd_cfg;
-
-  -- PCI Express Fast Config Initialization pattern
-
-
-  constant USER_CLK_FREQ        : integer := 2;
-  constant USER_CLK2_DIV2       : string  := "FALSE";
-  constant USERCLK2_FREQ        : integer := get_userClk2(USER_CLK2_DIV2,USER_CLK_FREQ);
-  constant LNK_SPD              : integer := get_gt_lnk_spd_cfg(PL_FAST_TRAIN);
-
-  -- Common
-  signal user_lnk_up            : std_logic;
-  signal user_lnk_up_q          : std_logic;
-  signal user_clk               : std_logic;
-  signal user_reset             : std_logic;
-  signal user_reset_i           : std_logic;
-  signal user_reset_q           : std_logic;
-
-  -- Tx
-  signal s_axis_tx_tready       : std_logic;
-  signal s_axis_tx_tuser        : std_logic_vector (3 downto 0);
-  signal s_axis_tx_tdata        : std_logic_vector((C_DATA_WIDTH - 1) downto 0);
-  signal s_axis_tx_tkeep        : std_logic_vector((C_DATA_WIDTH/8 - 1) downto 0);
-  signal s_axis_tx_tlast        : std_logic;
-  signal s_axis_tx_tvalid       : std_logic;
-
-  -- Rx
-  signal m_axis_rx_tdata        : std_logic_vector((C_DATA_WIDTH - 1) downto 0);
-  signal m_axis_rx_tkeep        : std_logic_vector((C_DATA_WIDTH/8- 1) downto 0);
-  signal m_axis_rx_tlast        : std_logic;
-  signal m_axis_rx_tvalid       : std_logic;
-  signal m_axis_rx_tready       : std_logic;
-  signal m_axis_rx_tuser        : std_logic_vector (21 downto 0);
-
-  signal tx_cfg_gnt             : std_logic;
-  signal rx_np_ok               : std_logic;
-  signal rx_np_req              : std_logic;
-  signal cfg_turnoff_ok         : std_logic := '1';
-  signal cfg_trn_pending        : std_logic;
-  signal cfg_pm_halt_aspm_l0s   : std_logic;
-  signal cfg_pm_halt_aspm_l1    : std_logic;
-  signal cfg_pm_force_state_en  : std_logic;
-  signal cfg_pm_force_state     : std_logic_vector(1 downto 0);
-  signal cfg_pm_wake            : std_logic;
-  signal cfg_dsn                : std_logic_vector(63 downto 0);
-
-  signal fc_sel                 : std_logic_vector(2 downto 0);
-
-  ---------------------------------------------------------
-  -- 3. Configuration (CFG) Interface
-  ---------------------------------------------------------
-  signal cfg_err_cor                   : std_logic;
-  signal cfg_err_atomic_egress_blocked : std_logic;
-  signal cfg_err_internal_cor          : std_logic;
-  signal cfg_err_malformed             : std_logic;
-  signal cfg_err_mc_blocked            : std_logic;
-  signal cfg_err_poisoned              : std_logic;
-  signal cfg_err_norecovery            : std_logic;
-  signal cfg_err_ur                    : std_logic;
-  signal cfg_err_ecrc                  : std_logic;
-  signal cfg_err_cpl_timeout           : std_logic;
-  signal cfg_err_cpl_abort             : std_logic;
-  signal cfg_err_cpl_unexpect          : std_logic;
-  signal cfg_err_posted                : std_logic;
-  signal cfg_err_locked                : std_logic;
-  signal cfg_err_acs                   : std_logic;
-  signal cfg_err_internal_uncor        : std_logic;
-  signal cfg_err_tlp_cpl_header        : std_logic_vector(47 downto 0);
-  signal cfg_err_aer_headerlog         : std_logic_vector(127 downto 0);
-  signal cfg_aer_interrupt_msgnum      : std_logic_vector(4 downto 0);
-
-  signal cfg_interrupt                 : std_logic;
-  signal cfg_interrupt_assert          : std_logic;
-  signal cfg_interrupt_di              : std_logic_vector(7 downto 0);
-  signal cfg_interrupt_stat            : std_logic;
-  signal cfg_pciecap_interrupt_msgnum  : std_logic_vector(4 downto 0);
-
-  signal cfg_to_turnoff                : std_logic;
-  signal cfg_bus_number                : std_logic_vector(7 downto 0);
-  signal cfg_device_number             : std_logic_vector(4 downto 0);
-  signal cfg_function_number           : std_logic_vector(2 downto 0);
-
-  signal cfg_mgmt_di                   : std_logic_vector(31 downto 0);
-  signal cfg_mgmt_byte_en              : std_logic_vector(3 downto 0);
-  signal cfg_mgmt_dwaddr               : std_logic_vector(9 downto 0);
-  signal cfg_mgmt_wr_en                : std_logic;
-  signal cfg_mgmt_rd_en                : std_logic;
-  signal cfg_mgmt_wr_readonly          : std_logic;
-
-  ---------------------------------------------------------
-  -- Physical Layer Control and Status (PL) Interface
-  ---------------------------------------------------------
-  signal pl_ltssm_state                 : std_logic_vector(5 downto 0);
-  signal pl_directed_link_auton         : std_logic;
-  signal pl_directed_link_change        : std_logic_vector(1 downto 0);
-  signal pl_directed_link_speed         : std_logic;
-  signal pl_directed_link_width         : std_logic_vector(1 downto 0);
-  signal pl_upstream_prefer_deemph      : std_logic;
-
-  signal sys_clk                        : std_logic;
-  signal sys_rst_n_c                    : std_logic;
-  signal sys_rst                        : std_logic;
-
-  signal pipe_mmcm_rst_n                : std_logic := '1';
-  -------------------------------------------------------
+	end component;
 
 begin
-
-  o_sys_clk <= sys_clk;
-
-  process(user_clk)
-  begin
-    if (user_clk'event and user_clk='1') then
-     if (user_reset = '1') then
-       user_reset_q  <= '1' after TCQ;
-       user_lnk_up_q <= '0' after TCQ;
-     else
-       user_reset_q  <= user_reset after TCQ;
-       user_lnk_up_q <= user_lnk_up after TCQ;
-     end if;
-    end if;
-  end process;
-
-  refclk_ibuf : IBUFDS_GTE2
-     port map(
-       O       => sys_clk,
-       ODIV2   => open,
-       I       => sys_clk_p,
-       IB      => sys_clk_n,
-       CEB     => '0');
-
-  sys_reset_n_ibuf : IBUF
-     port map(
-       O       => sys_rst_n_c,
-       I       => sys_rst_n);
-
-  -- Convert sys_rst to active high to adhere to AXI requirements
-  -- sys_reset_c              <= not sys_rst_n_c;
---  user_reset_i             <= not user_reset;
-
-
-
-	REG_READ_PROC : process(i_reg_clk)
-	begin
-		if rising_edge(i_reg_clk) then
-			o_DBus <= (others => '0');
-
-			if (i_cs = '1') then
-				case i_ABus is
-					-- 0x180
-					when "000000" =>
-						o_DBus <= x"B00F";
-
-					-- 0x182
-					when "000001" =>
-						o_DBus(0) <= s_srst;
-						o_DBus(1) <= s_go;
-
-					-- 0x184
-					when "000010" => 
-						o_DBus(15) <= s_td;
-						o_DBus(14) <= s_ep;
-
-						o_DBus(13 downto 12) <= s_attr;
-
-						o_DBus(9 downto 0) <= s_length;
-
-					-- 0x186
-					when "000011" => 
-
-						o_DBus(14 downto 13) <= s_fmt;
-						o_DBus(12 downto 8) <= s_type;
-
-						o_DBus(6 downto 4) <= s_tc;
-
-					-- 0x188
-					when "000100" => 
-						o_DBus(15 downto 8) <= s_tag;
-						o_DBus(7 downto 4) <= s_last_dw_be;
-						o_DBus(3 downto 0) <= s_1st_dw_be;
-
-					-- 0x18a
-					when "000101" => 
-						o_DBus(15 downto 0) <= s_requestor_id;
-
-					-- 0x18c
-					when "000110" => 
-						o_DBus(15 downto 0) <= s_addr(15 downto 0);
-
-					-- 0x18e
-					when "000111" => 
-						o_DBus(15 downto 0) <= s_addr(31 downto 16);
-
-					-- 0x190
-					when "001000" => 
-						o_DBus(15 downto 0) <= s_data(15 downto 0);
-
-					-- 0x192
-					when "001001" => 
-						o_DBus(15 downto 0) <= s_data(31 downto 16);
-
-					-- 0x194
-					when "001010" => 
-						o_DBus(15 downto 0) <= s_data_rx(15 downto 0);
-												
-					-- 0x196
-					when "001011" => 
-						o_DBus(15 downto 0) <= s_data_rx(31 downto 16);
-
-					-- 0x198
-					when "001100" => 
-						o_DBus(15 downto 0) <= s_data_rx(47 downto 32);
-
-					-- 0x19a
-					when "001101" => 
-						o_DBus(15 downto 0) <= s_data_rx(63 downto 48);
-
-					-- 0x19c
-					when "001110" => 
-						o_DBus(15 downto 0) <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_rx_cntr, 16));
-
-					-- 0x19e
-					when "001111" => 
-						o_DBus(15 downto 0) <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_dbg_cntr, 16));
-
-					when others =>
-						o_DBus <= x"DEAD";
-				end case;
-			end if;
-		end if;
-	end process REG_READ_PROC;
-
-	s_requestor_id <= cfg_bus_number & cfg_device_number & cfg_function_number;
 
 	REG_WRITE_PROC : process(i_reg_clk)
 	begin
 		if rising_edge(i_reg_clk) then
-			if (i_cs = '1' and i_wr_en = '1') then
-				case i_ABus is
-					-- 0x180
-					when "000000" =>
+			if (i_reg_cs = '1' and i_reg_wr = '1') then
+				case i_reg_addr is
+					when VER_REG_OFFSET =>
 						null;
 
-					-- 0x182
-					when "000001" =>
-						s_srst <= i_DBus(0);
-						s_go <= i_DBus(1);
+					when CTRL_REG_OFFSET =>
+						s_srst_reg <= i_reg_data(0);
+						s_tx_dma_go_reg <= i_reg_data(1);
 
-					-- 0x184
-					when "000010" => 
-						s_td <= i_DBus(15);
-						s_ep <= i_DBus(14);
 
-						s_attr <= i_DBus(13 downto 12);
+					when TX_DMA_START_ADDR_LO_REG_OFFSET =>
+						s_tx_dma_start_addr_reg(15 downto 0) <= i_reg_data(15 downto 0);
 
-						s_length <= i_DBus(9 downto 0);
+					when TX_DMA_START_ADDR_HI_REG_OFFSET =>
+						s_tx_dma_start_addr_reg(31 downto 16) <= i_reg_data(15 downto 0);
 
-					-- 0x186
-					when "000011" => 
 
-						s_fmt <= i_DBus(14 downto 13);
-						s_type <= i_DBus(12 downto 8);
+					when TX_DMA_TOTAL_WORDS_LO_REG_OFFSET =>
+						s_tx_dma_total_words_reg(15 downto 0) <= i_reg_data(15 downto 0);
 
-						s_tc <= i_DBus(6 downto 4);
+					when TX_DMA_TOTAL_WORDS_HI_REG_OFFSET =>
+						s_tx_dma_total_words_reg(31 downto 16) <= i_reg_data(15 downto 0);
 
-					-- 0x188
-					when "000100" => 
-						s_tag <= i_DBus(15 downto 8);
-						s_last_dw_be <= i_DBus(7 downto 4);
-						s_1st_dw_be <= i_DBus(3 downto 0);
 
-					-- 0x18a
-					when "000101" => 
-						--s_requestor_id <= i_DBus(15 downto 0);
+					when TX_TLP_MAX_WORDS_REG_OFFSET =>
+						s_tx_tlp_max_num_words_reg(9 downto 0) <= i_reg_data(9 downto 0);
 
-					-- 0x18c
-					when "000110" => 
-						s_addr(15 downto 0) <= i_DBus(15 downto 2) & "00";
-
-					-- 0x18e
-					when "000111" => 
-						s_addr(31 downto 16) <= i_DBus(15 downto 0);
-
-					-- 0x190
-					when "001000" => 
-						s_data(15 downto 0) <= i_DBus(15 downto 0);
-
-					-- 0x192
-					when "001001" => 
-						s_data(31 downto 16) <= i_DBus(15 downto 0);
 						
 					when others =>
 						null;
@@ -727,78 +587,345 @@ begin
 		end if;
 	end process REG_WRITE_PROC;
 
-	m_axis_rx_tready <= '1';
 
-	process(user_clk)
+	REG_READ_PROC : process(i_reg_clk)
 	begin
-		if rising_edge(user_clk) then
-			if (m_axis_rx_tvalid = '1') then
-				s_data_rx <= m_axis_rx_tdata;
+		if rising_edge(i_reg_clk) then
+			o_reg_data <= (others => '0');
 
-				s_rx_cntr <= s_rx_cntr + 1;
+			s_tx_tlp_state_meta <= s_tx_tlp_state;
+
+			s_rx_tlp_data_meta <= s_rx_tlp_data;
+			s_rx_tlp_data_reg <= s_rx_tlp_data_meta;
+
+			s_rx_tlp_cntr_meta <= s_rx_tlp_cntr;
+			s_rx_tlp_cntr_reg <= s_rx_tlp_cntr_meta;
+
+			s_tx_word_cnt_total_meta <= s_tx_word_cnt_total;
+			s_tx_word_cnt_total_reg <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_tx_word_cnt_total_meta, 32));
+
+			s_tx_dma_words_remain_cntr_meta	<= s_tx_dma_words_remain_cntr;
+			s_tx_dma_words_remain_cntr_reg <= s_tx_dma_words_remain_cntr_meta;
+
+			if (i_reg_cs = '1') then
+				case i_reg_addr is
+					when VER_REG_OFFSET =>
+						o_reg_data <= x"B0B5";
+
+					when CTRL_REG_OFFSET =>
+						o_reg_data(0) <= s_srst_reg;
+						o_reg_data(1) <= s_tx_dma_go_reg;
+
+
+						if (s_tx_tlp_state_meta = TX_TLP_IDLE_STATE) then
+							o_reg_data(12) <= '1';
+						end if;
+						if (s_tx_tlp_state_meta = TX_TLP_CLOCK0_STATE) then
+							o_reg_data(13) <= '1';
+						end if;
+						if (s_tx_tlp_state_meta = TX_TLP_CLOCK1_STATE) then
+							o_reg_data(14) <= '1';
+						end if;
+						if (s_tx_tlp_state_meta = TX_TLP_DATA_STATE) then
+							o_reg_data(15) <= '1';
+						end if;
+
+					when TX_DMA_START_ADDR_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_dma_start_addr_reg(15 downto 0);
+
+					when TX_DMA_START_ADDR_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_dma_start_addr_reg(31 downto 16);
+
+
+					when TX_DMA_TOTAL_WORDS_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_dma_total_words_reg(15 downto 0);
+
+					when TX_DMA_TOTAL_WORDS_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_dma_total_words_reg(31 downto 16);
+
+
+					when TX_TLP_MAX_WORDS_REG_OFFSET =>
+						o_reg_data(9 downto 0) <= s_tx_tlp_max_num_words_reg(9 downto 0);
+
+
+					when RX_TLP_DATA_LO_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(15 downto 0);
+
+					when RX_TLP_DATA_LO_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(31 downto 16);
+
+					when RX_TLP_DATA_HI_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(47 downto 32);
+
+					when RX_TLP_DATA_HI_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(63 downto 48);
+
+
+					when RX_TLP_CNTR_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_rx_tlp_cntr_reg, 16));
+
+
+					when TX_WORD_CNT_TOTAL_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_word_cnt_total_reg(15 downto 0);
+
+					when TX_WORD_CNT_TOTAL_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_word_cnt_total_reg(31 downto 16);
+
+
+					when TX_DMA_WORDS_REMAIN_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_tx_dma_words_remain_cntr_reg(15 downto 0));
+
+					when TX_DMA_WORDS_REMAIN_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_tx_dma_words_remain_cntr_reg(31 downto 16));
+
+
+					when others =>
+						o_reg_data <= x"DEAD";
+				end case;
+			end if;
+		end if;
+	end process REG_READ_PROC;
+
+
+	s_requestor_id <= cfg_bus_number & cfg_device_number & cfg_function_number;
+
+	--! Control state for building TLPs (and DMAing input data
+	TX_TLP_STATE_PROC : process(s_axi_clk)
+		variable v_tx_dma_total_word_cntr : unsigned(31 downto 0) := (others => '0');
+	begin
+		if rising_edge(s_axi_clk) then
+			s_srst_meta <= s_srst_reg;
+			s_srst <= s_srst_meta;
+
+			s_tx_dma_go_meta <= s_tx_dma_go_reg;
+			s_tx_dma_go <= s_tx_dma_go_meta;
+			s_tx_dma_go_r1 <= s_tx_dma_go;
+
+			s_tx_dma_total_words_meta <= UNSIGNED(s_tx_dma_total_words_reg);
+
+			s_tx_dma_start_addr_meta <= UNSIGNED(s_tx_dma_start_addr_reg);
+
+			s_tx_tlp_max_num_words_meta <= UNSIGNED(s_tx_tlp_max_num_words_reg);
+
+			if (i_axis_c2h_tvalid = '1' and s_o_axis_c2h_tready = '1') then
+				s_i_axis_c2h_tdata_prev <= s_i_axis_c2h_tdata;
 			end if;
 
-			s_go_meta <= s_go;
-			s_go_r1 <= s_go_meta;
-			s_go_r2 <= s_go_r1;
+			if (s_srst = '1') then
+				s_tx_tlp_state <= TX_TLP_IDLE_STATE;
+				s_tx_dma_words_remain_cntr <= (others => '0');
+				s_tx_word_cnt_total <= 0;
+			else
+				case s_tx_tlp_state is
+					when TX_TLP_IDLE_STATE =>
+						v_tx_dma_total_word_cntr := s_tx_dma_words_remain_cntr;
 
-			if (s_go_r2 = '0' and s_go_r1 = '1') then
-				s_tx_cntr <= 0;
+						-- Check if new DMA was kicked off by software in AM57
+						if (s_tx_dma_go = '1' and s_tx_dma_go_r1 = '0') then
+							-- Set up total number of words to be transferred as part of this DMA
+							v_tx_dma_total_word_cntr := s_tx_dma_total_words_meta;
+
+							s_tx_tlp_addr <= s_tx_dma_start_addr_meta;
+						end if;
+
+						-- Check if we need to send another TLP to continue working on current DMA
+						if (TO_INTEGER(v_tx_dma_total_word_cntr) > 0) then
+							s_tx_tlp_state <= TX_TLP_CLOCK0_STATE;
+						end if;
+
+						-- Reset counter for number of words to send for next TLP
+						if (v_tx_dma_total_word_cntr >= s_tx_tlp_max_num_words_meta) then 
+							s_tx_tlp_word_cntr <= TO_INTEGER(s_tx_dma_total_words_meta);
+						else
+							s_tx_tlp_word_cntr <= TO_INTEGER(v_tx_dma_total_word_cntr);
+						end if;
+
+						-- Will not be adding extra CRC to TLP data
+						s_tx_tlp_td <= '0';
+						-- Unused (for now at least)
+						s_tx_tlp_ep <= '0';
+						-- Unused (for now at least)
+						s_tx_tlp_attr <= "00";
+						-- Calculate number of 32-bit words in this TLP
+						if (v_tx_dma_total_word_cntr <= s_tx_tlp_max_num_words_meta) then
+							s_tx_tlp_length <= STD_LOGIC_VECTOR(v_tx_dma_total_word_cntr(9 downto 0));
+						else
+							s_tx_tlp_length <= STD_LOGIC_VECTOR(s_tx_tlp_max_num_words_meta(9 downto 0));
+						end if;
+
+						-- Setup TLP Header values:
+						-- Mark this as a memory write
+						s_tx_tlp_fmt <= "10";
+						-- Mark this as a memory write
+						s_tx_tlp_type <= "00000";
+						-- Unused (for now at least)
+						s_tx_tlp_tc <= "000";
+						-- Tag unused in write requests
+						s_tx_tlp_tag <= "00000000";
+
+						-- Case of transmitting only one word is special
+						if (TO_INTEGER(v_tx_dma_total_word_cntr) = 1) then
+							s_tx_tlp_last_dw_be <= "0000";
+						else
+							s_tx_tlp_last_dw_be <= "1111";
+						end if;
+
+						-- Always transmist at least 4 bytes
+						s_tx_tlp_1st_dw_be <= "1111";
+						
+						s_tx_dma_words_remain_cntr <= v_tx_dma_total_word_cntr;
+
+					when TX_TLP_CLOCK0_STATE => 
+						if (s_o_pcie_axis_tx_tready = '1') then
+							s_tx_tlp_state <= TX_TLP_CLOCK1_STATE;
+						end if;
+
+					when TX_TLP_CLOCK1_STATE =>
+						if (s_o_pcie_axis_tx_tready = '1' and i_axis_c2h_tvalid = '1') then
+							if (s_tx_tlp_word_cntr > 1) then
+								s_tx_tlp_state <= TX_TLP_DATA_STATE;
+							else 
+								s_tx_tlp_state <= TX_TLP_IDLE_STATE;
+							end if;
+
+							s_tx_dma_words_remain_cntr <= s_tx_dma_words_remain_cntr - 1;
+
+							s_tx_tlp_word_cntr <= s_tx_tlp_word_cntr - 1;
+
+							s_tx_tlp_addr <= s_tx_tlp_addr + 4;
+
+							s_tx_word_cnt_total <= s_tx_word_cnt_total + 1;
+						end if;
+
+					when TX_TLP_DATA_STATE =>
+						if (s_o_pcie_axis_tx_tready = '1' and i_axis_c2h_tvalid = '1') then
+							if (s_tx_tlp_word_cntr >= 2) then
+								s_tx_dma_words_remain_cntr <= s_tx_dma_words_remain_cntr - 2;
+
+								s_tx_tlp_word_cntr <= s_tx_tlp_word_cntr - 2;
+
+								s_tx_tlp_addr <= s_tx_tlp_addr + 8;
+
+								s_tx_word_cnt_total <= s_tx_word_cnt_total + 2;
+							else
+								s_tx_dma_words_remain_cntr <= s_tx_dma_words_remain_cntr - 1;
+
+								s_tx_tlp_word_cntr <= s_tx_tlp_word_cntr - 1;
+
+								s_tx_tlp_addr <= s_tx_tlp_addr + 4;
+
+								s_tx_word_cnt_total <= s_tx_word_cnt_total + 1;
+							end if;
+
+							if (s_tx_tlp_word_cntr <= 2) then
+								s_tx_tlp_state <= TX_TLP_IDLE_STATE;
+							end if;
+						end if;
+				end case;	
 			end if;
+		end if;
+	end process TX_TLP_STATE_PROC;
 
-			s_axis_tx_tvalid <= '0';
+	-- Not using PCIe core data ECRC generation or other features enabled by these bits
+	s_i_pcie_axis_tx_tuser <= "0000";
 
-			if (s_tx_cntr < 2) then
-				s_axis_tx_tvalid <= '1';
+	-- Adjust endianness of incoming data
+	s_i_axis_c2h_tdata(7 downto 0) <= i_axis_c2h_tdata(31 downto 24);
+	s_i_axis_c2h_tdata(15 downto 8) <= i_axis_c2h_tdata(23 downto 16);
+	s_i_axis_c2h_tdata(23 downto 16) <= i_axis_c2h_tdata(15 downto 8);
+	s_i_axis_c2h_tdata(31 downto 24) <= i_axis_c2h_tdata(7 downto 0);
 
-				if (s_tx_cntr = 0) then
-					s_axis_tx_tdata <= (others => '0');
+	s_i_axis_c2h_tdata(39 downto 32) <= i_axis_c2h_tdata(63 downto 56);
+	s_i_axis_c2h_tdata(47 downto 40) <= i_axis_c2h_tdata(55 downto 48);
+	s_i_axis_c2h_tdata(55 downto 48) <= i_axis_c2h_tdata(47 downto 40);
+	s_i_axis_c2h_tdata(63 downto 56) <= i_axis_c2h_tdata(39 downto 32);
 
-					s_axis_tx_tdata(15 downto 0) <= s_td & s_ep & s_attr & "00" & s_length;
-					s_axis_tx_tdata(31 downto 16) <= "0" & s_fmt & s_type & "0" & s_tc & "0000";
-					s_axis_tx_tdata(47 downto 32) <= s_tag & s_last_dw_be & s_1st_dw_be;
-					s_axis_tx_tdata(63 downto 48) <= s_requestor_id;
+	--! State for changing what goes into s_axis_tx_* PCIe core input interface based on state
+	PCIE_AXI_TX_PROC : process(s_axi_clk)
+	begin
+		if (s_tx_tlp_word_cntr > 2) then
+			s_i_pcie_axis_tx_tlast <= '0';
+		else
+			s_i_pcie_axis_tx_tlast <= '1';
+		end if;
 
-					s_axis_tx_tkeep <= "11111111";
+		-- Smallest data unit we care about is words in this core
+		--  so there are only ever two options for specifying bytes to keep
+		if (s_tx_tlp_word_cntr > 1) then
+			s_i_pcie_axis_tx_tkeep <= "11111111";
+		else
+			s_i_pcie_axis_tx_tkeep <= "00001111";
+		end if;
 
-					s_axis_tx_tlast <= '0';
-				end if;
+		case s_tx_tlp_state is
+			when TX_TLP_IDLE_STATE =>
+				s_i_pcie_axis_tx_tdata <= (others => '0');
 
-				if (s_tx_cntr = 1) then
-					s_axis_tx_tdata <= (others => '0');
+				s_i_pcie_axis_tx_tvalid <= '0';
 
-					s_axis_tx_tdata(31 downto 0) <= s_addr;
-					s_axis_tx_tdata(63 downto 32) <= s_data;
+				s_o_axis_c2h_tready <= '0';
 
-					if (s_fmt = "00") then
-						s_axis_tx_tkeep <= "00001111";
-					else
-						s_axis_tx_tkeep <= "11111111";
-					end if;
+			when TX_TLP_CLOCK0_STATE =>
+				s_i_pcie_axis_tx_tdata(15 downto 0) <= s_tx_tlp_td & s_tx_tlp_ep & s_tx_tlp_attr & "00" & s_tx_tlp_length;
+				s_i_pcie_axis_tx_tdata(31 downto 16) <= "0" & s_tx_tlp_fmt & s_tx_tlp_type & "0" & s_tx_tlp_tc & "0000";
+				s_i_pcie_axis_tx_tdata(47 downto 32) <= s_tx_tlp_tag & s_tx_tlp_last_dw_be & s_tx_tlp_1st_dw_be;
+				s_i_pcie_axis_tx_tdata(63 downto 48) <= s_requestor_id;
 
-					s_axis_tx_tlast <= '1';
-				end if;
+				s_i_pcie_axis_tx_tvalid <= '1';
 
-				if (s_axis_tx_tready = '1') then
-					s_tx_cntr <= s_tx_cntr + 1;
+				s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
 
-					s_dbg_cntr <= s_dbg_cntr + 1;
+			when TX_TLP_CLOCK1_STATE =>
+				s_i_pcie_axis_tx_tdata(31 downto 0) <= std_logic_vector(s_tx_tlp_addr(31 downto 2)) & "00";
+				s_i_pcie_axis_tx_tdata(63 downto 32) <= s_i_axis_c2h_tdata(31 downto 0);
+
+				s_i_pcie_axis_tx_tvalid <= i_axis_c2h_tvalid;
+
+				s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
+
+			when TX_TLP_DATA_STATE =>
+				s_i_pcie_axis_tx_tdata(31 downto 0) <= s_i_axis_c2h_tdata_prev(63 downto 32);
+				s_i_pcie_axis_tx_tdata(63 downto 32) <= s_i_axis_c2h_tdata(31 downto 0);
+				
+				s_i_pcie_axis_tx_tvalid <= i_axis_c2h_tvalid;
+
+				s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
+		end case;
+	end process PCIE_AXI_TX_PROC;
+
+	o_axis_c2h_tready <= s_o_axis_c2h_tready;
+
+	--! Process for receiving TLPs from AM57. For now debug, but eventually will maybe add logic for DMA from Host (AM57) to Card (FPGA)
+	PCIE_AXI_RX_PROC : process(s_axi_clk)
+	begin
+		if rising_edge(s_axi_clk) then
+			-- For now always accept TLP data from PCIe Host (AM57)
+			s_i_pcie_axis_rx_tready <= '0';
+
+			if (s_srst = '1') then
+				s_rx_tlp_data <= (others => '0');
+
+				s_rx_tlp_cntr <= 0;
+			else
+				if (s_o_pcie_axis_rx_tvalid = '1') then
+					s_rx_tlp_data <= s_o_pcie_axis_rx_tdata;
+
+					s_rx_tlp_cntr <= s_rx_tlp_cntr + 1;
 				end if;
 			end if;
 		end if;
-	end process;
+	end process PCIE_AXI_RX_PROC;
 
-	s_axis_tx_tuser <= (others => '0');
-
+	-- DO NOT CHANGE INSTANTIATION NAME! constraints (.xdc) file looks for this for properly constrain PCIe core
 	pcie_7x_0_support_i : pcie_7x_0_support 
 	 generic map
 	   (	 
 	    LINK_CAP_MAX_LINK_WIDTH       =>   2 ,  -- PCIe Lane Width
-	    C_DATA_WIDTH                  =>   C_DATA_WIDTH ,                       -- RX/TX interface data width
-	    KEEP_WIDTH                    =>   C_DATA_WIDTH/8 ,                         -- TSTRB width
+	    C_DATA_WIDTH                  =>   64,                       -- RX/TX interface data width
+	    KEEP_WIDTH                    =>   8 ,                         -- TSTRB width
 	    PCIE_REFCLK_FREQ              =>   0 , -- PCIe reference clock frequency
 	    PCIE_LINK_SPEED               =>   LNK_SPD,
-	    PCIE_USERCLK1_FREQ            =>   USER_CLK_FREQ +1 ,                   -- PCIe user clock 1 frequency
+	    PCIE_USERCLK1_FREQ            =>   s_axi_clk_FREQ +1 ,                   -- PCIe user clock 1 frequency
 	    PCIE_USERCLK2_FREQ            =>   USERCLK2_FREQ +1 ,                   -- PCIe user clock 2 frequency             
 	    PCIE_USE_MODE                 =>  "1.0",           -- PCIe use mode
 	    PCIE_GT_DEVICE                =>  "GTP"              -- PCIe GT device
@@ -827,34 +954,34 @@ begin
 	  pipe_oobclk_out                            => open ,
 	  pipe_userclk2_out                          => open ,
 	  pipe_mmcm_lock_out                         => open ,
-	  pipe_pclk_sel_slave                        => ( others => '0'),
-	  pipe_mmcm_rst_n                            => pipe_mmcm_rst_n ,       -- // Async      | Async
+	  pipe_pclk_sel_slave                        => (others => '0'),
+	  pipe_mmcm_rst_n                            => '1',       -- // Async      | Async
 
 
 	  ----------------------------------------------------------------------------------------------------------------
 	  -- AXI-S Interface                                                                                            --  
 	  ----------------------------------------------------------------------------------------------------------------
 	  -- Common
-	  user_clk_out                               => user_clk ,
+	  user_clk_out                               => s_axi_clk ,
 	  user_reset_out                             => user_reset ,
-	  user_lnk_up                                => user_lnk_up ,
+	  user_lnk_up                                => open,
 	  user_app_rdy                               => open ,
 
 	  -- TX
-	  s_axis_tx_tready                           => s_axis_tx_tready ,
-	  s_axis_tx_tdata                            => s_axis_tx_tdata ,
-	  s_axis_tx_tkeep                            => s_axis_tx_tkeep ,
-	  s_axis_tx_tuser                            => s_axis_tx_tuser ,
-	  s_axis_tx_tlast                            => s_axis_tx_tlast ,
-	  s_axis_tx_tvalid                           => s_axis_tx_tvalid ,
+	  s_axis_tx_tready                           => s_o_pcie_axis_tx_tready,
+	  s_axis_tx_tdata                            => s_i_pcie_axis_tx_tdata,
+	  s_axis_tx_tkeep                            => s_i_pcie_axis_tx_tkeep,
+	  s_axis_tx_tuser                            => s_i_pcie_axis_tx_tuser,
+	  s_axis_tx_tlast                            => s_i_pcie_axis_tx_tlast,
+	  s_axis_tx_tvalid                           => s_i_pcie_axis_tx_tvalid,
 
 	  -- Rx
-	  m_axis_rx_tdata                            => m_axis_rx_tdata ,
-	  m_axis_rx_tkeep                            => m_axis_rx_tkeep ,
-	  m_axis_rx_tlast                            => m_axis_rx_tlast ,
-	  m_axis_rx_tvalid                           => m_axis_rx_tvalid ,
-	  m_axis_rx_tready                           => m_axis_rx_tready ,
-	  m_axis_rx_tuser                            => m_axis_rx_tuser ,
+	  m_axis_rx_tdata                            => s_o_pcie_axis_rx_tdata,
+	  m_axis_rx_tkeep                            => s_o_pcie_axis_rx_tkeep,
+	  m_axis_rx_tlast                            => s_o_pcie_axis_rx_tlast,
+	  m_axis_rx_tvalid                           => s_o_pcie_axis_rx_tvalid,
+	  m_axis_rx_tready                           => s_i_pcie_axis_rx_tready,
+	  m_axis_rx_tuser                            => s_o_pcie_axis_rx_tuser,
 
 	  -- Flow Control
 	  fc_cpld                                    => open, 
@@ -913,7 +1040,7 @@ begin
 	  cfg_pm_force_state_en                      => '0', -- Do not qualify cfg_pm_force_state 
 	  cfg_pm_force_state                         => "00", -- Do not move force core into specific PM state 
 	  cfg_dsn                                    => PCI_EXP_EP_DSN_2 & PCI_EXP_EP_DSN_1, -- Assign the input DSN
-	  cfg_turnoff_ok                             => cfg_turnoff_ok ,
+	  cfg_turnoff_ok                             => '1',
 	  cfg_pm_wake                                => '0', -- Never direct the core to send a PM_PME Message
 	  cfg_pm_send_pme_to                         => '0' ,
 	  cfg_ds_bus_number                          => "00000000" ,
@@ -954,7 +1081,7 @@ begin
 	  tx_buf_av                                  => open, 
 	  tx_err_drop                                => open, 
 	  tx_cfg_req                                 => open,
-	  cfg_to_turnoff                             => cfg_to_turnoff ,
+	  cfg_to_turnoff                             => open,
 	  cfg_bus_number                             => cfg_bus_number ,
 	  cfg_device_number                          => cfg_device_number ,
 	  cfg_function_number                        => cfg_function_number ,
@@ -1028,8 +1155,6 @@ begin
 	  pl_transmit_hot_rst                        => '0' ,
 	  pl_downstream_deemph_source                => '0' ,
 
-
-
 	  -----------------------------------------------------------------------------------------------------
 	  -- PCIe DRP (PCIe DRP) Interface                                                                   --
 	  -----------------------------------------------------------------------------------------------------
@@ -1041,14 +1166,14 @@ begin
 	  pcie_drp_do                                => open,
 	  pcie_drp_rdy                               => open,
 
-
-
 	  ------------------------------------------------------------------------------------------------------
 	  -- System  (SYS) Interface                                                                          -- 
 	  ------------------------------------------------------------------------------------------------------
-	  sys_clk                                   =>  sys_clk ,
-	  sys_rst_n                                 =>  sys_rst_n_c 
+	  sys_clk                                   =>  i_pcie_sys_clk,
+	  sys_rst_n                                 =>  i_pcie_sys_rst_n 
 
 	);
+
+	o_axi_clk <= s_axi_clk;
 
 end rtl;
