@@ -178,6 +178,12 @@ architecture rtl of pcie_dma is
 	constant TX_DMA_WORDS_REMAIN_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(16, 6));
 	constant TX_DMA_WORDS_REMAIN_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(17, 6));
 
+	constant TX_TLP_CNTR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(18, 6));
+	constant TX_TLP_CNTR_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(19, 6));
+
+	constant TX_TLP_CLK_CNTR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(20, 6));
+	constant TX_TLP_CLK_CNTR_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(21, 6));
+
 
 --TODO: interrupts...
 --	Can we gen interrupt after final TLP sent. Is this a race condition?
@@ -222,7 +228,8 @@ architecture rtl of pcie_dma is
 	signal s_tx_dma_words_remain_cntr_meta : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
 	signal s_tx_dma_words_remain_cntr_reg : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
 
-	signal s_tx_tlp_max_num_words_reg : std_logic_vector(9 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(512, 10)); --! This 
+	signal s_tx_tlp_max_num_words_reg : std_logic_vector(9 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(32, 10)); --! Maximum number of words per TLP payload.
+		--! Must be a power of 2.
 	signal s_tx_tlp_max_num_words_meta : unsigned(9 downto 0) := (others => '0');
 
 	signal s_tx_tlp_word_cntr : integer := 0; --! Number of 32-bit words remaining to transmit for current TLP.
@@ -262,6 +269,14 @@ architecture rtl of pcie_dma is
 	signal s_tx_word_cnt_total : integer := 0;
 	signal s_tx_word_cnt_total_meta : integer := 0;
 	signal s_tx_word_cnt_total_reg : std_logic_vector(31 downto 0) := (others => '0');
+
+	signal s_tx_tlp_cntr : integer := 0;
+	signal s_tx_tlp_cntr_meta : integer := 0;
+	signal s_tx_tlp_cntr_reg : std_logic_vector(31 downto 0) := (others => '0');
+
+	signal s_tx_tlp_clk_cntr : integer := 0;
+	signal s_tx_tlp_clk_cntr_meta : integer := 0;
+	signal s_tx_tlp_clk_cntr_reg : std_logic_vector(31 downto 0) := (others => '0');
 
 	-- PCIe Core Common
 	signal s_axi_clk : std_logic;
@@ -607,10 +622,16 @@ begin
 			s_tx_dma_words_remain_cntr_meta	<= s_tx_dma_words_remain_cntr;
 			s_tx_dma_words_remain_cntr_reg <= s_tx_dma_words_remain_cntr_meta;
 
+			s_tx_tlp_cntr_meta <= s_tx_tlp_cntr;
+			s_tx_tlp_cntr_reg <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_tx_tlp_cntr_meta, 32));
+
+			s_tx_tlp_clk_cntr_meta <= s_tx_tlp_clk_cntr;
+			s_tx_tlp_clk_cntr_reg <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_tx_tlp_clk_cntr_meta, 32));
+
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
-						o_reg_data <= x"B0B5";
+						o_reg_data <= x"B0B6";
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
@@ -679,6 +700,20 @@ begin
 						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_tx_dma_words_remain_cntr_reg(31 downto 16));
 
 
+					when TX_TLP_CNTR_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_tlp_cntr_reg(15 downto 0);
+
+					when TX_TLP_CNTR_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_tlp_cntr_reg(31 downto 16);
+
+
+					when TX_TLP_CLK_CNTR_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_tlp_clk_cntr_reg(15 downto 0);
+
+					when TX_TLP_CLK_CNTR_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_tx_tlp_clk_cntr_reg(31 downto 16);
+
+
 					when others =>
 						o_reg_data <= x"DEAD";
 				end case;
@@ -715,6 +750,7 @@ begin
 				s_tx_tlp_state <= TX_TLP_IDLE_STATE;
 				s_tx_dma_words_remain_cntr <= (others => '0');
 				s_tx_word_cnt_total <= 0;
+				s_tx_tlp_cntr <= 0;
 			else
 				case s_tx_tlp_state is
 					when TX_TLP_IDLE_STATE =>
@@ -726,6 +762,8 @@ begin
 							v_tx_dma_total_word_cntr := s_tx_dma_total_words_meta;
 
 							s_tx_tlp_addr <= s_tx_dma_start_addr_meta;
+
+							s_tx_tlp_clk_cntr <= 0;
 						end if;
 
 						-- Check if we need to send another TLP to continue working on current DMA
@@ -734,8 +772,8 @@ begin
 						end if;
 
 						-- Reset counter for number of words to send for next TLP
-						if (v_tx_dma_total_word_cntr >= s_tx_tlp_max_num_words_meta) then 
-							s_tx_tlp_word_cntr <= TO_INTEGER(s_tx_dma_total_words_meta);
+						if (v_tx_dma_total_word_cntr > s_tx_tlp_max_num_words_meta) then 
+							s_tx_tlp_word_cntr <= TO_INTEGER(s_tx_tlp_max_num_words_meta);
 						else
 							s_tx_tlp_word_cntr <= TO_INTEGER(v_tx_dma_total_word_cntr);
 						end if;
@@ -747,10 +785,10 @@ begin
 						-- Unused (for now at least)
 						s_tx_tlp_attr <= "00";
 						-- Calculate number of 32-bit words in this TLP
-						if (v_tx_dma_total_word_cntr <= s_tx_tlp_max_num_words_meta) then
-							s_tx_tlp_length <= STD_LOGIC_VECTOR(v_tx_dma_total_word_cntr(9 downto 0));
-						else
+						if (v_tx_dma_total_word_cntr > s_tx_tlp_max_num_words_meta) then
 							s_tx_tlp_length <= STD_LOGIC_VECTOR(s_tx_tlp_max_num_words_meta(9 downto 0));
+						else
+							s_tx_tlp_length <= STD_LOGIC_VECTOR(v_tx_dma_total_word_cntr(9 downto 0));
 						end if;
 
 						-- Setup TLP Header values:
@@ -778,7 +816,11 @@ begin
 					when TX_TLP_CLOCK0_STATE => 
 						if (s_o_pcie_axis_tx_tready = '1') then
 							s_tx_tlp_state <= TX_TLP_CLOCK1_STATE;
+
+							s_tx_tlp_cntr <= s_tx_tlp_cntr + 1;
 						end if;
+
+						s_tx_tlp_clk_cntr <= s_tx_tlp_clk_cntr + 1;
 
 					when TX_TLP_CLOCK1_STATE =>
 						if (s_o_pcie_axis_tx_tready = '1' and i_axis_c2h_tvalid = '1') then
@@ -796,6 +838,8 @@ begin
 
 							s_tx_word_cnt_total <= s_tx_word_cnt_total + 1;
 						end if;
+
+						s_tx_tlp_clk_cntr <= s_tx_tlp_clk_cntr + 1;
 
 					when TX_TLP_DATA_STATE =>
 						if (s_o_pcie_axis_tx_tready = '1' and i_axis_c2h_tvalid = '1') then
@@ -821,6 +865,8 @@ begin
 								s_tx_tlp_state <= TX_TLP_IDLE_STATE;
 							end if;
 						end if;
+
+						s_tx_tlp_clk_cntr <= s_tx_tlp_clk_cntr + 1;
 				end case;	
 			end if;
 		end if;
@@ -873,7 +919,7 @@ begin
 
 				s_i_pcie_axis_tx_tvalid <= '1';
 
-				s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
+				s_o_axis_c2h_tready <= '0';
 
 			when TX_TLP_CLOCK1_STATE =>
 				s_i_pcie_axis_tx_tdata(31 downto 0) <= std_logic_vector(s_tx_tlp_addr(31 downto 2)) & "00";
@@ -886,10 +932,16 @@ begin
 			when TX_TLP_DATA_STATE =>
 				s_i_pcie_axis_tx_tdata(31 downto 0) <= s_i_axis_c2h_tdata_prev(63 downto 32);
 				s_i_pcie_axis_tx_tdata(63 downto 32) <= s_i_axis_c2h_tdata(31 downto 0);
-				
+
 				s_i_pcie_axis_tx_tvalid <= i_axis_c2h_tvalid;
 
-				s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
+				if (s_tx_tlp_word_cntr = 1) then
+					-- If only transmitting 1 32-bit word we only use s_i_axis_c2h_tdata_prev data and should
+					--  not say we used any of the current data on the buss
+					s_o_axis_c2h_tready <= '0';
+				else
+					s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
+				end if;
 		end case;
 	end process PCIE_AXI_TX_PROC;
 

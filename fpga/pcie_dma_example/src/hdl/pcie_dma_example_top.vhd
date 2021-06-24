@@ -22,7 +22,7 @@ use UNISIM.VComponents.all;
 entity pcie_dma_example_top is
 	generic 
 	( 
-		DECODE_BITS : integer := 2 
+		DECODE_BITS : integer := 3 
 	);
 	port 
 	(
@@ -251,6 +251,31 @@ architecture rtl of pcie_dma_example_top is
 			i_axis_c2h_tkeep : IN STD_LOGIC_VECTOR(7 DOWNTO 0)
 		);
 	end component pcie_dma;
+
+	component test_pattern_stream is
+		port (
+			i_reg_clk : in  std_logic;
+
+			i_reg_addr : in  std_logic_vector(5 downto 0);
+			i_reg_data : in  std_logic_vector(15 downto 0);
+			o_reg_data : out std_logic_vector(15 downto 0);
+			i_reg_wr : in  std_logic;
+			i_reg_rd : in  std_logic;
+			i_reg_cs : in  std_logic;
+
+			o_irq  : out std_logic := '0';
+			i_ilevel : in  std_logic_vector(1 downto 0) := "00";      
+			i_ivector : in  std_logic_vector(3 downto 0) := "0000";   
+			      
+			i_axi_clk : in std_logic; --! Data on *_axis_* is synchronous to this clock.
+
+			o_axis_tdata : out STD_LOGIC_VECTOR(63 DOWNTO 0); 
+			o_axis_tlast : out STD_LOGIC; 
+			o_axis_tvalid : out STD_LOGIC;
+			i_axis_tready : in STD_LOGIC;
+			o_axis_tkeep : out STD_LOGIC_VECTOR(7 DOWNTO 0) 
+		);
+	end component test_pattern_stream;
 	
 
 begin
@@ -413,7 +438,29 @@ begin
 			i_axis_c2h_tkeep => s_pcie_dma_i_axis_c2h_tkeep
 		);
 
-	-- TODO: Create pattern (PRBS?) stream component for testing PCIe DMA
+	TEST_PATTERN_INST : test_pattern_stream 
+		port map (
+			i_reg_clk => clk_100,
+
+			i_reg_addr => s_core_addr,
+			i_reg_data => s_core_edi,
+			o_reg_data => s_core_edo(4),
+			i_reg_wr => s_core_wr,
+			i_reg_rd => s_core_rd,
+			i_reg_cs => s_core_cs(4),
+
+			o_irq => open,
+			i_ilevel => "00",
+			i_ivector => "0000",
+			      
+			i_axi_clk => s_pcie_dma_axi_clk,
+
+			o_axis_tdata => s_pcie_dma_i_axis_c2h_tdata,
+			o_axis_tlast => s_pcie_dma_i_axis_c2h_tlast,
+			o_axis_tvalid => s_pcie_dma_i_axis_c2h_tvalid,
+			i_axis_tready => s_pcie_dma_o_axis_c2h_tready,
+			o_axis_tkeep => s_pcie_dma_i_axis_c2h_tkeep
+		);
 
 
 	-- IO assignments here
