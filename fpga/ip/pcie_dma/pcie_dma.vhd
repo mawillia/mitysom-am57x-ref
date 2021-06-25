@@ -889,25 +889,15 @@ begin
 	--! State for changing what goes into s_axis_tx_* PCIe core input interface based on state
 	PCIE_AXI_TX_PROC : process(s_axi_clk)
 	begin
-		if (s_tx_tlp_word_cntr > 2) then
-			s_i_pcie_axis_tx_tlast <= '0';
-		else
-			s_i_pcie_axis_tx_tlast <= '1';
-		end if;
-
-		-- Smallest data unit we care about is words in this core
-		--  so there are only ever two options for specifying bytes to keep
-		if (s_tx_tlp_word_cntr > 1) then
-			s_i_pcie_axis_tx_tkeep <= "11111111";
-		else
-			s_i_pcie_axis_tx_tkeep <= "00001111";
-		end if;
-
 		case s_tx_tlp_state is
 			when TX_TLP_IDLE_STATE =>
 				s_i_pcie_axis_tx_tdata <= (others => '0');
 
 				s_i_pcie_axis_tx_tvalid <= '0';
+
+				s_i_pcie_axis_tx_tlast <= '0';
+
+				s_i_pcie_axis_tx_tkeep <= "11111111";
 
 				s_o_axis_c2h_tready <= '0';
 
@@ -919,6 +909,10 @@ begin
 
 				s_i_pcie_axis_tx_tvalid <= '1';
 
+				s_i_pcie_axis_tx_tlast <= '0';
+
+				s_i_pcie_axis_tx_tkeep <= "11111111";
+
 				s_o_axis_c2h_tready <= '0';
 
 			when TX_TLP_CLOCK1_STATE =>
@@ -927,6 +921,14 @@ begin
 
 				s_i_pcie_axis_tx_tvalid <= i_axis_c2h_tvalid;
 
+				if (s_tx_tlp_word_cntr > 1) then
+					s_i_pcie_axis_tx_tlast <= '0';
+				else
+					s_i_pcie_axis_tx_tlast <= '1';
+				end if;
+
+				s_i_pcie_axis_tx_tkeep <= "11111111";
+
 				s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
 
 			when TX_TLP_DATA_STATE =>
@@ -934,6 +936,21 @@ begin
 				s_i_pcie_axis_tx_tdata(63 downto 32) <= s_i_axis_c2h_tdata(31 downto 0);
 
 				s_i_pcie_axis_tx_tvalid <= i_axis_c2h_tvalid;
+
+				if (s_tx_tlp_word_cntr > 2) then
+					s_i_pcie_axis_tx_tlast <= '0';
+				else
+					s_i_pcie_axis_tx_tlast <= '1';
+				end if;
+
+
+				-- Smallest data unit we care about is words in this core
+				--  so there are only ever two options for specifying bytes to keep
+				if (s_tx_tlp_word_cntr > 1) then
+					s_i_pcie_axis_tx_tkeep <= "11111111";
+				else
+					s_i_pcie_axis_tx_tkeep <= "00001111";
+				end if;
 
 				if (s_tx_tlp_word_cntr = 1) then
 					-- If only transmitting 1 32-bit word we only use s_i_axis_c2h_tdata_prev data and should
