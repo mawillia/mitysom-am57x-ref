@@ -166,7 +166,7 @@ architecture rtl of pcie_dma is
 	constant VER_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(0, 6));
 	constant CTRL_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(1, 6));
 
-	constant STATUS_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(2, 6));
+	constant INT_STATUS_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(2, 6));
 
 
 	constant TX_DMA_START_ADDR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(4, 6));
@@ -201,12 +201,6 @@ architecture rtl of pcie_dma is
 
 	constant TX_DMA_DESC_FIFO_COUNT_WIDTH : integer := integer(ceil(log2(real(g_max_tx_descs))));
 
-
---TODO: interrupts...
---	Can we gen interrupt after final TLP sent. Is this a race condition?
---	What about MSI option?
-
-
 	constant PCI_EXP_EP_OUI : std_logic_vector(23 downto 0) := x"000A35";
 	constant PCI_EXP_EP_DSN_1 : std_logic_vector(31 downto 0) := x"01" & PCI_EXP_EP_OUI;
 	constant PCI_EXP_EP_DSN_2 : std_logic_vector(31 downto 0) := x"00000001";
@@ -216,6 +210,7 @@ architecture rtl of pcie_dma is
 	constant USERCLK2_FREQ : integer := get_userClk2(s_axi_clk2_DIV2, s_axi_clk_FREQ);
 	constant LNK_SPD : integer := get_gt_lnk_spd_cfg("FALSE");
 
+
 	------------------------------------
 	-- Signals 
 	------------------------------------
@@ -223,12 +218,40 @@ architecture rtl of pcie_dma is
 	signal s_srst_meta : std_logic := '0';
 	signal s_srst : std_logic := '0';
 
+	signal s_tx_tlp_send_comp_int : std_logic := '0'; --! Rising edge interrupt set when final write TLP is sent
+		--! Only set if requested as part of DMA descriptor and read completion not requested instead.
+	signal s_tx_tlp_send_comp_int_meta : std_logic := '0'; 
+	signal s_tx_tlp_send_comp_int_reg : std_logic := '0'; 
+
+	signal s_tx_tlp_send_comp_int_en_reg : std_logic := '0'; 
+
+	signal s_tx_tlp_send_comp_int_clr_reg : std_logic := '0'; 
+	signal s_tx_tlp_send_comp_int_clr_meta : std_logic := '0'; 
+	signal s_tx_tlp_send_comp_int_clr : std_logic := '0'; 
+	signal s_tx_tlp_send_comp_int_clr_r1 : std_logic := '0'; 
+
+
+	signal s_rd_comp_rcved_int : std_logic := '0'; --! Rising edge interrupt set when read request received.
+		--! Request for read completion is sent at end of TX DMA if bit is set in DMA descriptor request.
+	signal s_rd_comp_rcved_int_meta : std_logic := '0';
+	signal s_rd_comp_rcved_int_reg : std_logic := '0';
+
+	signal s_rd_comp_rcved_int_en_reg : std_logic := '0'; 
+
+	signal s_rd_comp_rcved_int_clr_reg : std_logic := '0'; 
+	signal s_rd_comp_rcved_int_clr_meta : std_logic := '0'; 
+	signal s_rd_comp_rcved_int_clr : std_logic := '0'; 
+	signal s_rd_comp_rcved_int_clr_r1 : std_logic := '0'; 
+
 	type t_tx_tlp_state is 
 		(
 			TX_TLP_IDLE_STATE,
 			TX_TLP_CLOCK0_STATE, -- First 64 bits of TLP data as seen in Figure 3-2 in 7 Series FPGAs Integrated Block for PCI Express v3.3 LogiCORE IP Product Guide
 			TX_TLP_CLOCK1_STATE, -- Second 64 bits of TLP data as seen in Figure 3-2 in 7 Series FPGAs Integrated Block for PCI Express v3.3 LogiCORE IP Product Guide
-			TX_TLP_DATA_STATE -- Sending remaing 32-bit data words of TLP
+			TX_TLP_DATA_STATE, -- Sending remaing 32-bit data words of TLP
+			TX_RD_REQ_PREP_STATE, -- Prep to send request at end of DMA request
+			TX_RD_REQ_CLOCK0_STATE, -- Send first 64 bits of TLP for read request
+			TX_RD_REQ_CLOCK1_STATE -- Send final 32 bits of TLP for read request
 		);
 	signal s_tx_tlp_state : t_tx_tlp_state := TX_TLP_IDLE_STATE;
 	signal s_tx_tlp_state_meta : t_tx_tlp_state := TX_TLP_IDLE_STATE;
@@ -266,6 +289,7 @@ architecture rtl of pcie_dma is
 	signal s_requestor_id : std_logic_vector(15 downto 0) := (others => '0');
 
 	signal s_tx_tlp_addr : unsigned(31 downto 0) := (others => '0');
+	signal s_rd_req_addr : unsigned(31 downto 0) := (others => '0'); -- Keeps track of last address written to in case final read completion is requested at end of DMA
 
 	signal s_i_axis_c2h_tdata : std_logic_vector(63 downto 0) := (others => '0'); 
 	signal s_i_axis_c2h_tdata_prev : std_logic_vector(63 downto 0) := (others => '0'); --! Most previously valid data from input stream to DMA to Host (AM57)
@@ -326,6 +350,7 @@ architecture rtl of pcie_dma is
 	signal s_tx_dma_desc_fifo_rd_en : std_logic := '0';
 	signal s_tx_dma_desc_fifo_data_out : std_logic_vector(63 downto 0) := (others => '0');
 	signal s_tx_dma_desc_fifo_empty : std_logic := '0';
+
 
 	------------------------------------
 	-- Components
@@ -616,6 +641,8 @@ architecture rtl of pcie_dma is
 
 begin
 
+	o_irq <= (s_tx_tlp_send_comp_int and s_tx_tlp_send_comp_int_en_reg) or (s_rd_comp_rcved_int and s_rd_comp_rcved_int_en_reg);
+
 	REG_WRITE_PROC : process(i_reg_clk)
 	begin
 		if rising_edge(i_reg_clk) then
@@ -631,6 +658,16 @@ begin
 					when CTRL_REG_OFFSET =>
 						s_srst_reg <= i_reg_data(0);
 
+						s_tx_tlp_send_comp_int_en_reg <= i_reg_data(4);
+						s_rd_comp_rcved_int_en_reg <= i_reg_data(5);
+
+					when INT_STATUS_REG_OFFSET =>
+						if (i_reg_data(0) = '1') then
+							s_tx_tlp_send_comp_int_clr_reg <= not(s_tx_tlp_send_comp_int_clr_reg);
+						end if;
+						if (i_reg_data(1) = '1') then
+							s_rd_comp_rcved_int_clr_reg <= not(s_rd_comp_rcved_int_clr_reg);
+						end if;
 
 					when TX_DMA_START_ADDR_LO_REG_OFFSET =>
 						s_tx_dma_desc_fifo_data_in(15 downto 0) <= i_reg_data(15 downto 0);
@@ -648,7 +685,6 @@ begin
 						s_tx_dma_desc_fifo_data_in(62) <= i_reg_data(14); -- Generate interrupt at end of DMA
 						s_tx_dma_desc_fifo_data_in(61 downto 48) <= i_reg_data(13 downto 0);
 
-						-- TODO: is the second 16-bit word written for 32-bit write???
 						s_tx_dma_desc_fifo_data_wr_en <= '1';
 
 
@@ -669,6 +705,12 @@ begin
 			o_reg_data <= (others => '0');
 
 			s_tx_tlp_state_meta <= s_tx_tlp_state;
+
+			s_tx_tlp_send_comp_int_meta <= s_tx_tlp_send_comp_int;
+			s_tx_tlp_send_comp_int_reg <= s_tx_tlp_send_comp_int_meta;
+
+			s_rd_comp_rcved_int_meta <= s_rd_comp_rcved_int;
+			s_rd_comp_rcved_int_reg <= s_rd_comp_rcved_int_meta;
 
 			s_rx_tlp_data_meta <= s_rx_tlp_data;
 			s_rx_tlp_data_reg <= s_rx_tlp_data_meta;
@@ -691,24 +733,40 @@ begin
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
-						o_reg_data <= x"B0B7";
+						o_reg_data <= x"B0B9";
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
 
+						o_reg_data(4) <= s_tx_tlp_send_comp_int_en_reg;
+						o_reg_data(5) <= s_rd_comp_rcved_int_en_reg;
+
 
 						if (s_tx_tlp_state_meta = TX_TLP_IDLE_STATE) then
-							o_reg_data(12) <= '1';
+							o_reg_data(8) <= '1';
 						end if;
 						if (s_tx_tlp_state_meta = TX_TLP_CLOCK0_STATE) then
-							o_reg_data(13) <= '1';
+							o_reg_data(9) <= '1';
 						end if;
 						if (s_tx_tlp_state_meta = TX_TLP_CLOCK1_STATE) then
-							o_reg_data(14) <= '1';
+							o_reg_data(10) <= '1';
 						end if;
 						if (s_tx_tlp_state_meta = TX_TLP_DATA_STATE) then
-							o_reg_data(15) <= '1';
+							o_reg_data(11) <= '1';
 						end if;
+						if (s_tx_tlp_state_meta = TX_RD_REQ_PREP_STATE) then
+							o_reg_data(12) <= '1';
+						end if;
+						if (s_tx_tlp_state_meta = TX_RD_REQ_CLOCK0_STATE) then
+							o_reg_data(13) <= '1';
+						end if;
+						if (s_tx_tlp_state_meta = TX_RD_REQ_CLOCK1_STATE) then
+							o_reg_data(14) <= '1';
+						end if;
+
+					when INT_STATUS_REG_OFFSET =>
+						o_reg_data(0) <= s_tx_tlp_send_comp_int_reg;
+						o_reg_data(1) <= s_rd_comp_rcved_int_reg;
 
 					when TX_DMA_START_ADDR_LO_REG_OFFSET =>
 						o_reg_data(15 downto 0) <= s_tx_dma_desc_fifo_data_in(15 downto 0);
@@ -860,6 +918,14 @@ begin
 				s_i_axis_c2h_tdata_prev <= s_i_axis_c2h_tdata;
 			end if;
 
+			s_tx_tlp_send_comp_int_clr_meta <= s_tx_tlp_send_comp_int_clr_reg;
+			s_tx_tlp_send_comp_int_clr <= s_tx_tlp_send_comp_int_clr_meta;
+			s_tx_tlp_send_comp_int_clr_r1 <= s_tx_tlp_send_comp_int_clr;
+
+			if (s_tx_tlp_send_comp_int_clr_r1 /= s_tx_tlp_send_comp_int_clr) then
+				s_tx_tlp_send_comp_int <= '0';
+			end if;
+
 			if (s_srst = '1') then
 				s_tx_tlp_state <= TX_TLP_IDLE_STATE;
 				s_tx_dma_words_remain_cntr <= (others => '0');
@@ -870,21 +936,32 @@ begin
 					when TX_TLP_IDLE_STATE =>
 						v_tx_dma_total_word_cntr := s_tx_dma_words_remain_cntr;
 
-						-- If we are done with current DMA, check if another is queued in FIFO
-						if (s_tx_dma_words_remain_cntr = 0 and s_tx_dma_desc_fifo_empty = '0') then
-							s_req_rd_compl <= s_tx_dma_desc_fifo_data_out(63);
+						-- If we are done with current DMA...
+						if (s_tx_dma_words_remain_cntr = 0) then
+							-- Check if we need to generate an interrupt or if another DMA is request is queue in FIFO
+							if (s_req_rd_compl = '1') then
+								s_req_rd_compl <= '0';
 
-							s_gen_interrupt <= s_tx_dma_desc_fifo_data_out(62);
+								s_tx_tlp_state <= TX_RD_REQ_PREP_STATE;
+							elsif (s_gen_interrupt = '1' ) then
+								s_gen_interrupt <= '0';
 
-							-- Set up total number of words to be transferred as part of this DMA
-							v_tx_dma_total_word_cntr := UNSIGNED("00" & s_tx_dma_desc_fifo_data_out(61 downto 32));
+								s_tx_tlp_send_comp_int <= '1';
+							elsif (s_tx_dma_desc_fifo_empty = '0') then
+								s_req_rd_compl <= s_tx_dma_desc_fifo_data_out(63);
 
-							s_tx_tlp_addr <= UNSIGNED(s_tx_dma_desc_fifo_data_out(31 downto 0));
+								s_gen_interrupt <= s_tx_dma_desc_fifo_data_out(62);
 
-							-- We have registered DMA descriptor info, clear it from FIFO
-							s_tx_dma_desc_fifo_rd_en <= '1';
+								-- Set up total number of words to be transferred as part of this DMA
+								v_tx_dma_total_word_cntr := UNSIGNED("00" & s_tx_dma_desc_fifo_data_out(61 downto 32));
 
-							s_tx_tlp_clk_cntr <= 0;
+								s_tx_tlp_addr <= UNSIGNED(s_tx_dma_desc_fifo_data_out(31 downto 0));
+
+								-- We have registered DMA descriptor info, clear it from FIFO
+								s_tx_dma_desc_fifo_rd_en <= '1';
+
+								s_tx_tlp_clk_cntr <= 0;
+							end if;
 						end if;
 
 						-- Check if we need to send another TLP to continue working on current DMA
@@ -958,6 +1035,9 @@ begin
 
 							s_tx_tlp_addr <= s_tx_tlp_addr + 4;
 
+							-- Want to read last word written
+							s_rd_req_addr <= s_tx_tlp_addr;
+
 							s_tx_word_cnt_total <= s_tx_word_cnt_total + 1;
 						end if;
 
@@ -972,6 +1052,9 @@ begin
 
 								s_tx_tlp_addr <= s_tx_tlp_addr + 8;
 
+								-- Want to read last word written
+								s_rd_req_addr <= s_tx_tlp_addr + 4;
+
 								s_tx_word_cnt_total <= s_tx_word_cnt_total + 2;
 							else
 								s_tx_dma_words_remain_cntr <= s_tx_dma_words_remain_cntr - 1;
@@ -980,12 +1063,57 @@ begin
 
 								s_tx_tlp_addr <= s_tx_tlp_addr + 4;
 
+								-- Want to read last word written
+								s_rd_req_addr <= s_tx_tlp_addr;
+
 								s_tx_word_cnt_total <= s_tx_word_cnt_total + 1;
 							end if;
 
 							if (s_tx_tlp_word_cntr <= 2) then
 								s_tx_tlp_state <= TX_TLP_IDLE_STATE;
 							end if;
+						end if;
+
+						s_tx_tlp_clk_cntr <= s_tx_tlp_clk_cntr + 1;
+
+					when TX_RD_REQ_PREP_STATE =>
+						s_tx_tlp_state <= TX_RD_REQ_CLOCK0_STATE;
+
+						-- Will not be adding extra CRC to TLP data
+						s_tx_tlp_td <= '0';
+						-- Unused (for now at least)
+						s_tx_tlp_ep <= '0';
+						-- Unused (for now at least)
+						s_tx_tlp_attr <= "00";
+						-- Requesting one 1 32-bit read
+						s_tx_tlp_length <= "0000000001";
+
+						-- Setup TLP Header values:
+						-- Mark this as a memory read 
+						s_tx_tlp_fmt <= "00";
+						-- Mark this as a memory read
+						s_tx_tlp_type <= "00000";
+						-- Unused (for now at least)
+						s_tx_tlp_tc <= "000";
+						-- Tag unused in read requests
+						s_tx_tlp_tag <= "00000000";
+
+						-- Unused in read requests
+						s_tx_tlp_last_dw_be <= "0000";
+
+						-- Always transmist at least 4 bytes
+						s_tx_tlp_1st_dw_be <= "1111";
+						
+					when TX_RD_REQ_CLOCK0_STATE => 
+						if (s_o_pcie_axis_tx_tready = '1') then
+							s_tx_tlp_state <= TX_RD_REQ_CLOCK1_STATE;
+						end if;
+
+						s_tx_tlp_clk_cntr <= s_tx_tlp_clk_cntr + 1;
+
+					when TX_RD_REQ_CLOCK1_STATE =>
+						if (s_o_pcie_axis_tx_tready = '1') then
+							s_tx_tlp_state <= TX_TLP_IDLE_STATE;
 						end if;
 
 						s_tx_tlp_clk_cntr <= s_tx_tlp_clk_cntr + 1;
@@ -1081,6 +1209,43 @@ begin
 				else
 					s_o_axis_c2h_tready <= s_o_pcie_axis_tx_tready;
 				end if;
+
+			when TX_RD_REQ_PREP_STATE =>
+				s_i_pcie_axis_tx_tdata <= (others => '0');
+
+				s_i_pcie_axis_tx_tvalid <= '0';
+
+				s_i_pcie_axis_tx_tlast <= '0';
+
+				s_i_pcie_axis_tx_tkeep <= "11111111";
+
+				s_o_axis_c2h_tready <= '0';
+
+			when TX_RD_REQ_CLOCK0_STATE =>
+				s_i_pcie_axis_tx_tdata(15 downto 0) <= s_tx_tlp_td & s_tx_tlp_ep & s_tx_tlp_attr & "00" & s_tx_tlp_length;
+				s_i_pcie_axis_tx_tdata(31 downto 16) <= "0" & s_tx_tlp_fmt & s_tx_tlp_type & "0" & s_tx_tlp_tc & "0000";
+				s_i_pcie_axis_tx_tdata(47 downto 32) <= s_tx_tlp_tag & s_tx_tlp_last_dw_be & s_tx_tlp_1st_dw_be;
+				s_i_pcie_axis_tx_tdata(63 downto 48) <= s_requestor_id;
+
+				s_i_pcie_axis_tx_tvalid <= '1';
+
+				s_i_pcie_axis_tx_tlast <= '0';
+
+				s_i_pcie_axis_tx_tkeep <= "11111111";
+
+				s_o_axis_c2h_tready <= '0';
+
+			when TX_RD_REQ_CLOCK1_STATE =>
+				s_i_pcie_axis_tx_tdata(31 downto 0) <= std_logic_vector(s_rd_req_addr(31 downto 2)) & "00";
+				s_i_pcie_axis_tx_tdata(63 downto 32) <= (others => '0');
+
+				s_i_pcie_axis_tx_tvalid <= '1';
+
+				s_i_pcie_axis_tx_tlast <= '1';
+
+				s_i_pcie_axis_tx_tkeep <= "00001111";
+
+				s_o_axis_c2h_tready <= '0';
 		end case;
 	end process PCIE_AXI_TX_PROC;
 
@@ -1091,7 +1256,15 @@ begin
 	begin
 		if rising_edge(s_axi_clk) then
 			-- For now always accept TLP data from PCIe Host (AM57)
-			s_i_pcie_axis_rx_tready <= '0';
+			s_i_pcie_axis_rx_tready <= '1';
+
+			s_rd_comp_rcved_int_clr_meta <= s_rd_comp_rcved_int_clr_reg;	
+			s_rd_comp_rcved_int_clr <= s_rd_comp_rcved_int_clr_meta;	
+			s_rd_comp_rcved_int_clr_r1 <= s_rd_comp_rcved_int_clr;	
+
+			if (s_rd_comp_rcved_int_clr_r1 /= s_rd_comp_rcved_int_clr) then
+				s_rd_comp_rcved_int <= '0';
+			end if;
 
 			if (s_srst = '1') then
 				s_rx_tlp_data <= (others => '0');
@@ -1100,6 +1273,13 @@ begin
 			else
 				if (s_o_pcie_axis_rx_tvalid = '1') then
 					s_rx_tlp_data <= s_o_pcie_axis_rx_tdata;
+
+					-- Generate interrupt on last word received
+					--  We should only received requested read completions in current used case
+					--   but maybe we should add some checks rather than interrupting blindly??
+					if (s_o_pcie_axis_rx_tlast = '1') then
+						s_rd_comp_rcved_int <= '1';
+					end if;
 
 					s_rx_tlp_cntr <= s_rx_tlp_cntr + 1;
 				end if;
