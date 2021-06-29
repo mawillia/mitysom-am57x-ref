@@ -72,13 +72,22 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.math_real.all;
 
 library unisim;
 use unisim.vcomponents.all;
 use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
 
+library xpm;
+use xpm.VCOMPONENTS.all;
+
 entity pcie_dma is
+	generic 
+	(
+		g_max_tx_descs : natural := 16 --! Maximum number of tx (FPGA
+			--! to AM57) DMA descriptors that can be queued.
+	);
 	port (
 		i_reg_clk : in  std_logic;
 
@@ -157,20 +166,18 @@ architecture rtl of pcie_dma is
 	constant VER_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(0, 6));
 	constant CTRL_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(1, 6));
 
-	constant TX_DMA_START_ADDR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(2, 6));
-	constant TX_DMA_START_ADDR_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(3, 6));
+	constant STATUS_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(2, 6));
 
-	constant TX_DMA_TOTAL_WORDS_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(4, 6));
-	constant TX_DMA_TOTAL_WORDS_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(5, 6));
 
-	constant TX_TLP_MAX_WORDS_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(6, 6));
+	constant TX_DMA_START_ADDR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(4, 6));
+	constant TX_DMA_START_ADDR_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(5, 6));
 
-	constant RX_TLP_DATA_LO_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(8, 6));
-	constant RX_TLP_DATA_LO_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(9, 6));
-	constant RX_TLP_DATA_HI_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(10, 6));
-	constant RX_TLP_DATA_HI_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(11, 6));
+	constant TX_DMA_TOTAL_WORDS_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(6, 6));
+	constant TX_DMA_TOTAL_WORDS_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(7, 6));
 
-	constant RX_TLP_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(12, 6));
+	constant TX_TLP_MAX_WORDS_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(8, 6));
+	constant TX_DMA_NUM_DESC_QUEUE_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(9, 6));
+
 
 	constant TX_WORD_CNT_TOTAL_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(14, 6));
 	constant TX_WORD_CNT_TOTAL_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(15, 6));
@@ -183,6 +190,16 @@ architecture rtl of pcie_dma is
 
 	constant TX_TLP_CLK_CNTR_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(20, 6));
 	constant TX_TLP_CLK_CNTR_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(21, 6));
+
+	constant RX_TLP_DATA_LO_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(24, 6));
+	constant RX_TLP_DATA_LO_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(25, 6));
+	constant RX_TLP_DATA_HI_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(26, 6));
+	constant RX_TLP_DATA_HI_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(27, 6));
+
+	constant RX_TLP_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(28, 6));
+
+
+	constant TX_DMA_DESC_FIFO_COUNT_WIDTH : integer := integer(ceil(log2(real(g_max_tx_descs))));
 
 
 --TODO: interrupts...
@@ -206,11 +223,6 @@ architecture rtl of pcie_dma is
 	signal s_srst_meta : std_logic := '0';
 	signal s_srst : std_logic := '0';
 
-	signal s_tx_dma_go_reg : std_logic := '0';
-	signal s_tx_dma_go_meta : std_logic := '0';
-	signal s_tx_dma_go: std_logic := '0';
-	signal s_tx_dma_go_r1 : std_logic := '0';
-
 	type t_tx_tlp_state is 
 		(
 			TX_TLP_IDLE_STATE,
@@ -221,9 +233,6 @@ architecture rtl of pcie_dma is
 	signal s_tx_tlp_state : t_tx_tlp_state := TX_TLP_IDLE_STATE;
 	signal s_tx_tlp_state_meta : t_tx_tlp_state := TX_TLP_IDLE_STATE;
 
-	signal s_tx_dma_total_words_reg : std_logic_vector(31 downto 0) := (others => '0'); -- Total number of words to transmit as part of next Card (FPGA) to Host (AM57) DMA request
-	signal s_tx_dma_total_words_meta : unsigned(31 downto 0) := (others => '0');
-
 	signal s_tx_dma_words_remain_cntr : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
 	signal s_tx_dma_words_remain_cntr_meta : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
 	signal s_tx_dma_words_remain_cntr_reg : unsigned(31 downto 0) := (others => '0'); --! Number of 32-bit words remaining to transmit for current DMA request.
@@ -233,6 +242,10 @@ architecture rtl of pcie_dma is
 	signal s_tx_tlp_max_num_words_meta : unsigned(9 downto 0) := (others => '0');
 
 	signal s_tx_tlp_word_cntr : integer := 0; --! Number of 32-bit words remaining to transmit for current TLP.
+
+	signal s_req_rd_compl : std_logic := '0'; --! Indicates that at end of current TX DMA we do a read request and wait for completion before
+		--! generating an interrupt.
+	signal s_gen_interrupt : std_logic := '0'; --! Indicates we generate an interrupt once the TX DMA is complete.
 	
 	signal s_o_axis_c2h_tready : std_logic := '0'; --! Indicates if DMA to AM57 stream needs to pause.
 
@@ -252,8 +265,6 @@ architecture rtl of pcie_dma is
 
 	signal s_requestor_id : std_logic_vector(15 downto 0) := (others => '0');
 
-	signal s_tx_dma_start_addr_reg : std_logic_vector(31 downto 0) := (others => '0');
-	signal s_tx_dma_start_addr_meta : unsigned(31 downto 0) := (others => '0');
 	signal s_tx_tlp_addr : unsigned(31 downto 0) := (others => '0');
 
 	signal s_i_axis_c2h_tdata : std_logic_vector(63 downto 0) := (others => '0'); 
@@ -303,9 +314,50 @@ architecture rtl of pcie_dma is
 	signal cfg_device_number : std_logic_vector(4 downto 0);
 	signal cfg_function_number : std_logic_vector(2 downto 0);
 
+	signal s_tx_dma_desc_fifo_rst : std_logic := '0'; --TODO: needs timing ignore
+
+	signal s_tx_dma_desc_fifo_data_wr_en : std_logic := '0';
+	signal s_tx_dma_desc_fifo_data_in : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_tx_dma_desc_fifo_overflow : std_logic := '0';
+	signal s_tx_dma_desc_fifo_overflow_sticky : std_logic := '0';
+	signal s_tx_dma_desc_fifo_overflow_clr : std_logic := '0';
+	signal s_tx_dma_desc_fifo_wr_data_count : std_logic_vector(TX_DMA_DESC_FIFO_COUNT_WIDTH-1 downto 0) := (others => '0');
+
+	signal s_tx_dma_desc_fifo_rd_en : std_logic := '0';
+	signal s_tx_dma_desc_fifo_data_out : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_tx_dma_desc_fifo_empty : std_logic := '0';
+
 	------------------------------------
 	-- Components
 	------------------------------------
+	component xpm_fifo_async 
+	      generic(
+	      CDC_SYNC_STAGES     : integer := 2;       -- DECIMAL
+	      DOUT_RESET_VALUE    : string  := "0";    -- String
+	      ECC_MODE            : string  := "no_ecc";       -- String
+	      FIFO_MEMORY_TYPE    : string  := "auto"; -- String
+	      FIFO_READ_LATENCY   : integer := 1;     -- DECIMAL
+	      FIFO_WRITE_DEPTH    : integer := 2048;   -- DECIMAL
+	      FULL_RESET_VALUE    : integer := 0;      -- DECIMAL
+	      PROG_EMPTY_THRESH   : integer := 10;    -- DECIMAL
+	      PROG_FULL_THRESH    : integer := 10;     -- DECIMAL
+	      RD_DATA_COUNT_WIDTH : integer := 1;   -- DECIMAL
+	      READ_DATA_WIDTH     : integer := 32;      -- DECIMAL
+	      READ_MODE           : string  := "std";         -- String
+	      RELATED_CLOCKS      : integer := 0;        -- DECIMAL
+	      USE_ADV_FEATURES    : string  := "0707"; -- String
+	      WAKEUP_TIME         : integer := 0;           -- DECIMAL
+	      WRITE_DATA_WIDTH    : integer := 32;     -- DECIMAL
+	      WR_DATA_COUNT_WIDTH : integer := 1    -- DECIMAL
+	   );
+	    port (sleep, rst, wr_clk, wr_en, rd_en, rd_clk, injectdbiterr, injectsbiterr: in std_logic; 
+		      wr_rst_busy, wr_ack, almost_empty, almost_full, data_valid, empty, full, overflow, underflow, rd_rst_busy, prog_empty, prog_full, sbiterr, dbiterr: out std_logic;
+		      din: in std_logic_vector (WRITE_DATA_WIDTH-1 downto 0);
+		      dout: out std_logic_vector (READ_DATA_WIDTH-1 downto 0);
+		      rd_data_count: out std_logic_vector (RD_DATA_COUNT_WIDTH-1 downto 0);
+		      wr_data_count: out std_logic_vector (WR_DATA_COUNT_WIDTH-1 downto 0));
+	end component;
+
 	component pcie_7x_0_support is
 	generic (
 	   LINK_CAP_MAX_LINK_WIDTH : integer := 8;       
@@ -567,6 +619,10 @@ begin
 	REG_WRITE_PROC : process(i_reg_clk)
 	begin
 		if rising_edge(i_reg_clk) then
+			s_tx_dma_desc_fifo_rst <= s_srst_reg;
+
+			s_tx_dma_desc_fifo_data_wr_en <= '0';
+
 			if (i_reg_cs = '1' and i_reg_wr = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
@@ -574,26 +630,30 @@ begin
 
 					when CTRL_REG_OFFSET =>
 						s_srst_reg <= i_reg_data(0);
-						s_tx_dma_go_reg <= i_reg_data(1);
 
 
 					when TX_DMA_START_ADDR_LO_REG_OFFSET =>
-						s_tx_dma_start_addr_reg(15 downto 0) <= i_reg_data(15 downto 0);
+						s_tx_dma_desc_fifo_data_in(15 downto 0) <= i_reg_data(15 downto 0);
 
 					when TX_DMA_START_ADDR_HI_REG_OFFSET =>
-						s_tx_dma_start_addr_reg(31 downto 16) <= i_reg_data(15 downto 0);
+						s_tx_dma_desc_fifo_data_in(31 downto 16) <= i_reg_data(15 downto 0);
 
 
 					when TX_DMA_TOTAL_WORDS_LO_REG_OFFSET =>
-						s_tx_dma_total_words_reg(15 downto 0) <= i_reg_data(15 downto 0);
+						s_tx_dma_desc_fifo_data_in(47 downto 32) <= i_reg_data(15 downto 0);
 
 					when TX_DMA_TOTAL_WORDS_HI_REG_OFFSET =>
-						s_tx_dma_total_words_reg(31 downto 16) <= i_reg_data(15 downto 0);
+						s_tx_dma_desc_fifo_data_in(63) <= i_reg_data(15); -- Request DMA read completion as part of this DMA
+							-- to prevent race condition if not using MSI
+						s_tx_dma_desc_fifo_data_in(62) <= i_reg_data(14); -- Generate interrupt at end of DMA
+						s_tx_dma_desc_fifo_data_in(61 downto 48) <= i_reg_data(13 downto 0);
+
+						-- TODO: is the second 16-bit word written for 32-bit write???
+						s_tx_dma_desc_fifo_data_wr_en <= '1';
 
 
 					when TX_TLP_MAX_WORDS_REG_OFFSET =>
 						s_tx_tlp_max_num_words_reg(9 downto 0) <= i_reg_data(9 downto 0);
-
 						
 					when others =>
 						null;
@@ -631,11 +691,10 @@ begin
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
-						o_reg_data <= x"B0B6";
+						o_reg_data <= x"B0B7";
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
-						o_reg_data(1) <= s_tx_dma_go_reg;
 
 
 						if (s_tx_tlp_state_meta = TX_TLP_IDLE_STATE) then
@@ -652,21 +711,28 @@ begin
 						end if;
 
 					when TX_DMA_START_ADDR_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_tx_dma_start_addr_reg(15 downto 0);
+						o_reg_data(15 downto 0) <= s_tx_dma_desc_fifo_data_in(15 downto 0);
 
 					when TX_DMA_START_ADDR_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_tx_dma_start_addr_reg(31 downto 16);
+						o_reg_data(15 downto 0) <= s_tx_dma_desc_fifo_data_in(31 downto 16);
 
 
 					when TX_DMA_TOTAL_WORDS_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_tx_dma_total_words_reg(15 downto 0);
+						o_reg_data(15 downto 0) <= s_tx_dma_desc_fifo_data_in(47 downto 32);
 
 					when TX_DMA_TOTAL_WORDS_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_tx_dma_total_words_reg(31 downto 16);
+						o_reg_data(15) <= s_tx_dma_desc_fifo_data_in(63); -- Request DMA read completion as part of this DMA
+							-- to prevent race condition if not using MSI
+						o_reg_data(14) <= s_tx_dma_desc_fifo_data_in(62); -- Generate interrupt at end of DMA
+						o_reg_data(13 downto 0) <= s_tx_dma_desc_fifo_data_in(61 downto 48);
 
 
 					when TX_TLP_MAX_WORDS_REG_OFFSET =>
 						o_reg_data(9 downto 0) <= s_tx_tlp_max_num_words_reg(9 downto 0);
+
+
+					when TX_DMA_NUM_DESC_QUEUE_REG_OFFSET => 
+						o_reg_data(TX_DMA_DESC_FIFO_COUNT_WIDTH-1 downto 0) <= s_tx_dma_desc_fifo_wr_data_count;
 
 
 					when RX_TLP_DATA_LO_LO_REG_OFFSET =>
@@ -721,6 +787,60 @@ begin
 		end if;
 	end process REG_READ_PROC;
 
+	--! FIFO for queueing transmit (FPGA to AM57) DMA Descriptors
+	--!  See UG953 for further details on this component
+	TX_DMA_DESC_FIFO_INST : xpm_fifo_async
+		generic map 
+		(
+			FIFO_MEMORY_TYPE        => "auto",  --string; "auto", "block", or "distributed";
+			ECC_MODE                => "no_ecc", --string; "no_ecc" or "en_ecc";
+			RELATED_CLOCKS          => 0, --positive integer; 0 or 1
+			FIFO_WRITE_DEPTH        => g_max_tx_descs, --positive integer
+			WRITE_DATA_WIDTH        => 64, --positive integer
+			WR_DATA_COUNT_WIDTH     => TX_DMA_DESC_FIFO_COUNT_WIDTH, --positive integer
+			PROG_FULL_THRESH        => g_max_tx_descs-5, --positive integer
+			FULL_RESET_VALUE        => 0, --positive integer; 0 or 1;
+			READ_MODE               => "fwft", --string; "std" or "fwft";
+			FIFO_READ_LATENCY       => 0, --positive integer;
+			READ_DATA_WIDTH         => 64, --positive integer
+			RD_DATA_COUNT_WIDTH     => TX_DMA_DESC_FIFO_COUNT_WIDTH, --positive integer
+			PROG_EMPTY_THRESH       => 10, --positive integer
+			USE_ADV_FEATURES        => "0006", 	-- [0] to 1 enables overflow flag
+								-- [2] to 1 enables wr_data_count
+			DOUT_RESET_VALUE        => "0", --string
+			CDC_SYNC_STAGES         => 2, --positive integer
+			WAKEUP_TIME             => 0 --positive integer; 0 or 2;
+		)
+		port map 
+		(
+			sleep            => '0',
+			rst              => s_tx_dma_desc_fifo_rst,
+			wr_clk           => i_reg_clk,
+			wr_ack           => open,
+			wr_en            => s_tx_dma_desc_fifo_data_wr_en, 
+			din              => s_tx_dma_desc_fifo_data_in,
+			full             => open, 
+			almost_full      => open, 
+			overflow         => s_tx_dma_desc_fifo_overflow,
+			wr_rst_busy      => open,
+			rd_clk           => s_axi_clk,
+			rd_en            => s_tx_dma_desc_fifo_rd_en,
+			dout             => s_tx_dma_desc_fifo_data_out, 
+			empty            => s_tx_dma_desc_fifo_empty,
+			almost_empty     => open, 
+			underflow        => open, 
+			data_valid       => open, 
+			rd_rst_busy      => open, 
+			prog_full        => open,
+			wr_data_count    => s_tx_dma_desc_fifo_wr_data_count,
+			prog_empty       => open,
+			rd_data_count    => open,
+			injectsbiterr    => '0',
+			injectdbiterr    => '0',
+			sbiterr          => open,
+			dbiterr          => open
+		);
+
 
 	s_requestor_id <= cfg_bus_number & cfg_device_number & cfg_function_number;
 
@@ -732,15 +852,9 @@ begin
 			s_srst_meta <= s_srst_reg;
 			s_srst <= s_srst_meta;
 
-			s_tx_dma_go_meta <= s_tx_dma_go_reg;
-			s_tx_dma_go <= s_tx_dma_go_meta;
-			s_tx_dma_go_r1 <= s_tx_dma_go;
-
-			s_tx_dma_total_words_meta <= UNSIGNED(s_tx_dma_total_words_reg);
-
-			s_tx_dma_start_addr_meta <= UNSIGNED(s_tx_dma_start_addr_reg);
-
 			s_tx_tlp_max_num_words_meta <= UNSIGNED(s_tx_tlp_max_num_words_reg);
+
+			s_tx_dma_desc_fifo_rd_en <= '0';
 
 			if (i_axis_c2h_tvalid = '1' and s_o_axis_c2h_tready = '1') then
 				s_i_axis_c2h_tdata_prev <= s_i_axis_c2h_tdata;
@@ -756,12 +870,19 @@ begin
 					when TX_TLP_IDLE_STATE =>
 						v_tx_dma_total_word_cntr := s_tx_dma_words_remain_cntr;
 
-						-- Check if new DMA was kicked off by software in AM57
-						if (s_tx_dma_go = '1' and s_tx_dma_go_r1 = '0') then
-							-- Set up total number of words to be transferred as part of this DMA
-							v_tx_dma_total_word_cntr := s_tx_dma_total_words_meta;
+						-- If we are done with current DMA, check if another is queued in FIFO
+						if (s_tx_dma_words_remain_cntr = 0 and s_tx_dma_desc_fifo_empty = '0') then
+							s_req_rd_compl <= s_tx_dma_desc_fifo_data_out(63);
 
-							s_tx_tlp_addr <= s_tx_dma_start_addr_meta;
+							s_gen_interrupt <= s_tx_dma_desc_fifo_data_out(62);
+
+							-- Set up total number of words to be transferred as part of this DMA
+							v_tx_dma_total_word_cntr := UNSIGNED("00" & s_tx_dma_desc_fifo_data_out(61 downto 32));
+
+							s_tx_tlp_addr <= UNSIGNED(s_tx_dma_desc_fifo_data_out(31 downto 0));
+
+							-- We have registered DMA descriptor info, clear it from FIFO
+							s_tx_dma_desc_fifo_rd_en <= '1';
 
 							s_tx_tlp_clk_cntr <= 0;
 						end if;
@@ -831,6 +952,7 @@ begin
 							end if;
 
 							s_tx_dma_words_remain_cntr <= s_tx_dma_words_remain_cntr - 1;
+
 
 							s_tx_tlp_word_cntr <= s_tx_tlp_word_cntr - 1;
 
