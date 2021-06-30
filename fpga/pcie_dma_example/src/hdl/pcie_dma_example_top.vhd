@@ -236,10 +236,10 @@ architecture rtl of pcie_dma_example_top is
 			i_pcie_sys_rst_n : in std_logic;
 
 			--! PCIe pins:
-			pci_exp_txp : out std_logic_vector(1 downto 0);
-			pci_exp_txn : out std_logic_vector(1 downto 0);
-			pci_exp_rxp : in  std_logic_vector(1 downto 0);
-			pci_exp_rxn : in  std_logic_vector(1 downto 0);
+			o_pci_exp_txp : out std_logic_vector(1 downto 0);
+			o_pci_exp_txn : out std_logic_vector(1 downto 0);
+			i_pci_exp_rxp : in  std_logic_vector(1 downto 0);
+			i_pci_exp_rxn : in  std_logic_vector(1 downto 0);
 
 			o_axi_clk : out std_logic; --! Data on *_axis_* is synchronous to this clock.
 
@@ -423,10 +423,10 @@ begin
 			i_pcie_sys_clk => sys_clk,
 			i_pcie_sys_rst_n => sys_rst_n_c,
 
-			pci_exp_txp => pci_exp_txp,
-			pci_exp_txn => pci_exp_txn,
-			pci_exp_rxp => pci_exp_rxp,
-			pci_exp_rxn => pci_exp_rxn,
+			o_pci_exp_txp => pci_exp_txp,
+			o_pci_exp_txn => pci_exp_txn,
+			i_pci_exp_rxp => pci_exp_rxp,
+			i_pci_exp_rxn => pci_exp_rxn,
 
 			o_axi_clk => s_pcie_dma_axi_clk,
 
