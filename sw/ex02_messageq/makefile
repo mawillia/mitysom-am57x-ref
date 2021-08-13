@@ -60,7 +60,7 @@ ifeq ($(filter $(MAKECMDGOALS),install install_rov),$(MAKECMDGOALS))
 ifeq (,$(EXEC_DIR))
 EXEC_DIR=$(CURDIR)/install
 endif
-override EXEC_DIR:=$(EXEC_DIR)/ex02_messageq
+override EXEC_DIR:=$(EXEC_DIR)/binaries
 endif
 
 install: $(PROCLIST) $(addsuffix _install,$(PROCLIST))

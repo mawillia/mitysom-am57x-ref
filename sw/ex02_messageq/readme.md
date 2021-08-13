@@ -60,7 +60,7 @@ make
 make install
 ```
 
-This will create 5 binaries in *install/ex02_messageq/release*:
+This will create 5 binaries in *install/binaries/release*:
 * app_host - Linux application (Cortex-A15)
 * server_dsp1.xe66 - DSP1 firmware (C66x)
 * server_dsp2.xe66 - DSP2 firmware (C66x)

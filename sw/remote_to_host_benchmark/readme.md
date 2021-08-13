@@ -39,7 +39,7 @@ make
 make install
 ```
 
-This will create 5 binaries in *install/ex02_messageq/release*:
+This will create 5 binaries in *install/binaries/release*:
 * app_host - Linux application (Cortex-A15)
 * server_dsp1.xe66 - DSP1 firmware (C66x)
 
@@ -81,7 +81,7 @@ Options:
     h   : print this help message
     l   : list the available remote names
     i [interations]   : set the number of times the transfers loop for
-    m [messages]   : set the number of messages the DSP sends in batch
+    p [payload]   : set the payload size
     b [batches]   : set the number of batches of messages the DSP sends per loop
 
 Examples:
