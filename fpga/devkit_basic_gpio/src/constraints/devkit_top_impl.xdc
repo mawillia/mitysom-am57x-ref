@@ -14,6 +14,8 @@ set_property PACKAGE_PIN F2 [get_ports {pci_exp_txp[0]}]
 set_property PACKAGE_PIN B5 [get_ports sys_clk_n]
 set_property PACKAGE_PIN B6 [get_ports sys_clk_p]
 set_property PACKAGE_PIN R6 [get_ports sys_rst_n]
+set_property LOC IPAD_X1Y17 [get_ports sys_clk_n]
+set_property LOC IPAD_X1Y16 [get_ports sys_clk_p]
 
 # PCIe on clock 1 and data pairs 2/3
 #set_property PACKAGE_PIN G3 [get_ports {pci_exp_rxn[0]}]

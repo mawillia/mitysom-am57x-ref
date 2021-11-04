@@ -84,7 +84,7 @@
 # (UG) for guidelines regarding clock resource selection.
 #
 
-set_property LOC IBUFDS_GTE2_X0Y0 [get_cells */refclk_ibuf]
+set_property LOC IBUFDS_GTE2_X0Y1 [get_cells */refclk_ibuf]
 
 ###############################################################################
 # Timing Constraints
