@@ -27,6 +27,12 @@ architecture rtl of core_version is
 
 signal addr : std_logic_vector(1 downto 0) := "00";
 
+-- debugging, uncomment to ease locating nets for ILA insertion
+-- attribute mark_debug : string;
+-- attribute syn_keep : boolean;
+-- attribute mark_debug of addr : signal is "true";
+-- attribute syn_keep of addr : signal is true;
+
 begin
 
 -- generate 4 "FIFO" addresses for version information to be packed in
