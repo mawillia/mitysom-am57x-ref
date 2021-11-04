@@ -49,7 +49,7 @@ entity GPMC_iface is
 end GPMC_iface;
 
 architecture rtl of GPMC_iface is
-
+	
 	signal s_cs_n_r : std_logic_vector(3 downto 0) := (others=>'1');
 	signal s_oe_n_r : std_logic_vector(3 downto 0) := (others=>'1');
 	signal s_we_n_r : std_logic_vector(3 downto 0) := (others=>'1');
@@ -61,6 +61,30 @@ architecture rtl of GPMC_iface is
 	signal s_core_edo  : std_logic_vector(15 downto 0) := (others=>'0');
 	signal s_core_rd : std_logic := '0';
 	signal s_core_wr : std_logic := '0';
+
+	-- debugging, uncomment to ease locating nets for ILA insertion
+	-- attribute mark_debug : string;
+	-- attribute syn_keep : boolean;
+	-- attribute mark_debug of s_cs_n_r : signal is "true";
+	-- attribute mark_debug of s_oe_n_r : signal is "true";
+	-- attribute mark_debug of s_we_n_r : signal is "true";
+	-- attribute mark_debug of s_core_addr : signal is "true";
+	-- attribute mark_debug of s_core_cs : signal is "true";
+	-- attribute mark_debug of s_be : signal is "true";
+	-- attribute mark_debug of s_core_decode : signal is "true";
+	-- attribute mark_debug of s_core_edo : signal is "true";
+	-- attribute mark_debug of s_core_rd : signal is "true";
+	-- attribute mark_debug of s_core_wr : signal is "true";
+	-- attribute syn_keep of s_cs_n_r : signal is true;
+	-- attribute syn_keep of s_oe_n_r : signal is true;
+	-- attribute syn_keep of s_we_n_r : signal is true;
+	-- attribute syn_keep of s_core_addr : signal is true;
+	-- attribute syn_keep of s_core_cs : signal is true;
+	-- attribute syn_keep of s_be : signal is true;
+	-- attribute syn_keep of s_core_decode : signal is true;
+	-- attribute syn_keep of s_core_edo : signal is true;
+	-- attribute syn_keep of s_core_rd : signal is true;
+	-- attribute syn_keep of s_core_wr : signal is true;
 
 
 begin -- architecture: rtl
@@ -110,11 +134,11 @@ begin -- architecture: rtl
 			end if;
 
 			-- post read and write strobes to support FIFO / auto-address logic
-			if s_cs_n_r(3) = '0' and s_oe_n_r(3 downto 1) = "001" then
+			if s_oe_n_r(2 downto 0) = "001" then
 				s_core_rd <= '1';
 			end if;
 
-			if  s_cs_n_r(3) = '0' and s_we_n_r(3 downto 1) = "001" then
+			if s_we_n_r(2 downto 0) = "001" then
 				s_core_wr <= '1';
 			end if;
 		end if;
