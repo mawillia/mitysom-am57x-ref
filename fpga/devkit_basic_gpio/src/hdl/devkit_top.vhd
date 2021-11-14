@@ -174,6 +174,16 @@ architecture rtl of devkit_top is
 	constant MONTH:          std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(11, 4));
 	constant DAY:            std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(04, 5));
 
+	constant BM_CORE_CS:    integer := 0;
+	constant GPIO1_CORE_CS: integer := 1;
+	constant GPIO2_CORE_CS: integer := 2;
+	constant XADC_CORE_CS:  integer := 3;
+
+	constant GPIO1_IRQ_NUM: integer := 0;
+	constant GPIO2_IRQ_NUM: integer := 0;
+	constant GPIO1_IRQ_VEC: integer := 0;
+	constant GPIO2_IRQ_VEC: integer := 1;
+
 	component xilinx_pcie_2_1_ep_7x is
 		generic (
 			INIT_PATTERN_WIDTH            : integer := 8;
@@ -252,7 +262,7 @@ architecture rtl of devkit_top is
 	signal s_core_rd : std_logic := '0';
 	signal s_core_wr : std_logic := '0';
 	
-	signal s_irq_map : bus16_vector(1 downto 0) := (others=>(others=>'0'));
+	signal s_irq_map : bus32_vector(1 downto 0) := (others=>(others=>'0'));
 	
 	constant NUM_IO : integer := 99;
 
@@ -352,7 +362,7 @@ begin
 	)
 	port map (
 		i_clk           => clk_100,
-		i_cs            => s_core_cs(0),
+		i_cs            => s_core_cs(BM_CORE_CS),
 		i_ID            => APPLICATION_ID,
 		i_version_major => VERSION_MAJOR,
 		i_version_minor => VERSION_MINOR,
@@ -361,7 +371,7 @@ begin
 		i_day           => DAY,
 		i_ABus          => s_core_addr,
 		i_DBus          => s_core_edi,
-		o_DBus          => s_core_edo(0),
+		o_DBus          => s_core_edo(BM_CORE_CS),
 		i_wr_en         => s_core_wr,
 		i_rd_en         => s_core_rd,
 		i_be_r          => s_core_be,
@@ -378,13 +388,13 @@ begin
 			clk             => clk_100,
 			i_ABus          => s_core_addr,
 			i_DBus          => s_core_edi,
-			o_DBus          => s_core_edo(1),
+			o_DBus          => s_core_edo(GPIO1_CORE_CS),
 			i_wr_en         => s_core_wr,
 			i_rd_en         => s_core_rd,
-			i_cs            => s_core_cs(1),
-			o_irq           => s_irq_map(0)(0),
-			i_ilevel        => "00",
-			i_ivector       => "0000",  
+			i_cs            => s_core_cs(GPIO1_CORE_CS),
+			o_irq           => s_irq_map(GPIO1_IRQ_NUM)(GPIO1_IRQ_VEC),
+			i_ilevel        => '0',
+			i_ivector       => "00000",  
 			i_io            => s_gpio_in(63 downto 0),
 			t_io            => t_gpio(63 downto 0),
 			o_io            => s_gpio_out(63 downto 0),
@@ -401,13 +411,13 @@ begin
 			clk             => clk_100,
 			i_ABus          => s_core_addr,
 			i_DBus          => s_core_edi,
-			o_DBus          => s_core_edo(2),
+			o_DBus          => s_core_edo(GPIO2_CORE_CS),
 			i_wr_en         => s_core_wr,
 			i_rd_en         => s_core_rd,
-			i_cs            => s_core_cs(2),
-			o_irq           => s_irq_map(0)(1),
-			i_ilevel        => "00",
-			i_ivector       => "0001",  
+			i_cs            => s_core_cs(GPIO2_CORE_CS),
+			o_irq           => s_irq_map(GPIO2_IRQ_NUM)(GPIO2_IRQ_VEC),
+			i_ilevel        => '0',
+			i_ivector       => "00001",  
 			i_io(34 downto 0)  => s_gpio_in(98 downto 64),
 			i_io(47 downto 35) => (others=>'0'),
 			t_io(34 downto 0)  => t_gpio(98 downto 64),
@@ -423,10 +433,10 @@ begin
 	xadc : xadc_wiz_0
                 port map (
                         daddr_in        => '0' & s_core_addr,
-                        den_in          => s_core_cs(3),
+                        den_in          => s_core_cs(XADC_CORE_CS),
                         di_in           => s_core_edi,
                         dwe_in          => s_core_wr,
-                        do_out          => s_core_edo(3),
+                        do_out          => s_core_edo(XADC_CORE_CS),
                         drdy_out        => open,
                         dclk_in         => clk_100,
                         busy_out        => open,
