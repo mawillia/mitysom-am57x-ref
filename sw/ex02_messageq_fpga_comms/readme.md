@@ -63,6 +63,7 @@ make install
 This will create 2 binaries in *install/binaries/release*:
 * app_host - Linux application (Cortex-A15)
 * server_dsp1.xe66 - DSP1 firmware (C66x)
+* server_ipu2.xem4 - IPU2 firmware (Cortex-M4) 
 
 ## Running the demo
 
@@ -70,7 +71,7 @@ These steps will now be run on the AM57x and expect that the 2 binaries generate
 
 ### Prep
 
-Load the firmware into DSP1
+Load the firmware into DSP1 & IPU2
 ```
 # DSP1
 # Create a symbolic link from the DSP1 firmware to remoteproc dsp1 firmware location
@@ -79,6 +80,14 @@ ln -sf /home/root/server_dsp1.xe66 /lib/firmware/dra7-dsp1-fw.xe66
 echo 40800000.dsp > /sys/bus/platform/drivers/omap-rproc/unbind
 # Load the new firmware and start DSP1
 echo 40800000.dsp > /sys/bus/platform/drivers/omap-rproc/bind
+
+# IPU2
+# Create a symbolic link from the IPU2 firmware to remoteproc ipu2 firmware location
+ln -sf /home/root/server_ipu2.xem4 /lib/firmware/dra7-ipu2-fw.xem4
+# Stop IPU2
+echo 55020000.ipu > /sys/bus/platform/drivers/omap-rproc/unbind
+# Load the new firmware and start IPU2
+echo 55020000.ipu > /sys/bus/platform/drivers/omap-rproc/bind
 ```
 
 You will also need to disable the openCL daemon in order to use this demo, which can be done with the following command:
@@ -93,11 +102,14 @@ systemctl enable ti-mct-daemon.service
 
 ### Running
 
-To specify which processor linux will exchange messages with use the following command line argument: DSP1
+To specify which processor linux will exchange messages with use the following command line argument: DSP1, IPU2
 
 ```
 # Communicate with DSP1
 ./app_host DSP1
+
+# Communicate with IPU2
+./app_host IPU2
 ```
 
 Example output:
@@ -173,3 +185,4 @@ App_exec: message payload, FPGA base core id 0, major version 1, minor version 0
 
 You can also print out the log information from remote process by using the cat command on the following files:
 * /sys/kernel/debug/remoteproc/remoteproc2/trace0 (DSP1 Log)
+* /sys/kernel/debug/remoteproc/remoteproc1/trace0 (IPU2 Log)

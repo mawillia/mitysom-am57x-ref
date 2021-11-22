@@ -35,7 +35,7 @@
 #
 
 # edit PROCLIST list to control how many executables to build
-PROCLIST = dsp1 host
+PROCLIST = dsp1 ipu2 host
 
 EXBASE = .
 include $(EXBASE)/products.mak
