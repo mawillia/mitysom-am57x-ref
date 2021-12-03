@@ -38,6 +38,9 @@
 #define DGB_DATA_LEN_LO_REG_OFFSET (16)
 #define DGB_DATA_LEN_HI_REG_OFFSET (17)
 
+#define DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET (18)
+#define DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET (19)
+
 
 class tcFpgaPcieDma {
 public:
@@ -67,6 +70,8 @@ public:
 	uint32_t getDbgPcieAddr();
 	uint32_t getDbgDataLen();
 	uint16_t getDbgState();
+	uint16_t getDbgRdRqStateCntr();
+	uint16_t getDbgTxRqStateCntr();
 
 private:
 	static const size_t REG_MEM_SIZE = 0x1000;
@@ -165,6 +170,13 @@ uint16_t tcFpgaPcieDma::getDbgState() {
 	return regs[FPGA_PCIE_DMA_CTRL_REG_OFFSET];
 }
 
+uint16_t tcFpgaPcieDma::getDbgRdRqStateCntr() {
+	return regs[DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET];
+}
+
+uint16_t tcFpgaPcieDma::getDbgTxRqStateCntr() {
+	return regs[DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET];
+}
 
 
 
@@ -389,6 +401,8 @@ int main(int argc, char*argv[]) {
 	printf("state = 0x%04x\n", dma.getDbgState());
 	printf("RX TLP Count %d\n", dma.getRxTlpCnt());
 	printf("RX TLP Word 0x%016X\n", dma.getLastRxTlpWord());
+	printf("RdRqStateCntr = %d\n", dma.getDbgRdRqStateCntr());
+	printf("TxRqStateCntr = %d\n", dma.getDbgTxRqStateCntr());
 	printf("\n");
 
 	tp_stream.waitForInt();

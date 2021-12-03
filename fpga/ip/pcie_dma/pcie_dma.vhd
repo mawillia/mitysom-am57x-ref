@@ -226,6 +226,9 @@ architecture rtl of pcie_dma is
 	constant DGB_DATA_LEN_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(16, 6));
 	constant DGB_DATA_LEN_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(17, 6));
 
+	constant DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(18, 6));
+	constant DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(19, 6));
+
 
 	constant MAX_TLP_SIZE_FIFO_COUNT_WIDTH : integer := integer(ceil(log2(real(g_max_tlp_size))));
 
@@ -298,6 +301,8 @@ architecture rtl of pcie_dma is
 
 	signal s_o_dma_data_complete : std_logic_vector(g_num_complete_bits-1 downto 0);
 
+	signal s_i_dma_data_axis_tlast_r1 : std_logic := '0';
+
 	signal s_dma_data_in_dbg_word_cntr : unsigned(31 downto 0) := (others => '0');
 	signal s_dma_data_in_dbg_word_cntr_meta : std_logic_vector(31 downto 0) := (others => '0');
 	signal s_dma_data_in_dbg_word_cntr_reg : std_logic_vector(31 downto 0) := (others => '0');
@@ -314,6 +319,14 @@ architecture rtl of pcie_dma is
 	signal s_tx_tlp_wr_length_reg : std_logic_vector(9 downto 0) := (others => '0');
 
 
+	signal s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr : unsigned(15 downto 0) := (others => '0');
+	signal s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_meta : unsigned(15 downto 0) := (others => '0');
+	signal s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_reg : unsigned(15 downto 0) := (others => '0');
+
+
+	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr : unsigned(15 downto 0) := (others => '0');
+	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta : unsigned(15 downto 0) := (others => '0');
+	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg : unsigned(15 downto 0) := (others => '0');
 
 	---
 	-- TLP header fields:
@@ -746,12 +759,17 @@ begin
 			s_tx_tlp_wr_length_meta <= s_tx_tlp_wr_length;
 			s_tx_tlp_wr_length_reg <= s_tx_tlp_wr_length_meta;
 
+			s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_meta <= s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr;
+			s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_reg <= s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_meta;
+
+			s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta <= s_TX_TLP_CLOCK1_STATE_dbg_cntr;
+			s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg <= s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta;
 
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
 						s_ver_rd <= i_reg_rd;
-						o_reg_data <= x"B1B6"; --s_version_reg; --TODO: put back to real core version stuff
+						o_reg_data <= x"B1B7"; --s_version_reg; --TODO: put back to real core version stuff
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
@@ -773,6 +791,8 @@ begin
 							o_reg_data(12) <= '1';
 						end if;
 
+						o_reg_data(14) <= s_dma_complete_status_sel(0);
+						o_reg_data(15) <= s_dma_tlp_last;
 
 					when TX_TLP_MAX_WORDS_REG_OFFSET =>
 						o_reg_data(9 downto 0) <= s_tx_tlp_max_num_words_reg(9 downto 0);
@@ -822,7 +842,13 @@ begin
 					when DGB_DATA_LEN_HI_REG_OFFSET => 
 						o_reg_data(15 downto 0) <= x"0000";
 
-			
+
+					when DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET => 
+						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_reg);
+
+					when DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET => 
+						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg);
+
 
 					when others =>
 						o_reg_data <= x"DEAD";
@@ -911,6 +937,8 @@ begin
 			s_tx_tlp_max_num_words_meta <= UNSIGNED(s_tx_tlp_max_num_words_reg);
 			s_tx_tlp_max_num_words <= s_tx_tlp_max_num_words_meta;
 
+			s_i_dma_data_axis_tlast_r1 <= i_dma_data_axis_tlast;
+
 			if (s_srst_dma_data = '1') then
 				s_dma_data_in_tlp_word_cntr <= 0;
 				s_dma_data_in_total_word_cntr <= 0;
@@ -978,7 +1006,7 @@ begin
 			wr_ack           => open,
 			wr_en            => s_tlp_desc_fifo_wr_en, 
 			din(g_num_complete_bits+43-1 downto 43) => i_dma_data_complete_status_sel,
-			din(42) => i_dma_data_axis_tlast,
+			din(42) => s_i_dma_data_axis_tlast_r1,
 			din(41 downto 32)=> s_tlp_desc_fifo_din_len,
 			din(31 downto 0) => s_tlp_desc_fifo_din_addr,
 			full             => open, 
@@ -1063,20 +1091,20 @@ begin
 			else
 				case s_tx_tlp_state is
 					when TX_TLP_CLOCK0_STATE => 
-						-- Reset counter for number of words to send for next TLP
-						s_tx_tlp_words_remain_cntr <= TO_INTEGER(UNSIGNED(s_tlp_desc_fifo_dout_len));
-
-						-- Number of 32-bit words in this TLP
-						s_tx_tlp_wr_length <= s_tlp_desc_fifo_dout_len;
-
-						s_tx_tlp_addr <= UNSIGNED(s_tlp_desc_fifo_dout_addr);
-
-						-- Save for later so we know if we should do a final read or not after TLP is sent
-						s_dma_complete_status_sel <= s_tlp_desc_fifo_dout_complete_status_sel;
-						s_dma_tlp_last <= s_tlp_desc_fifo_dout_tlast;
-
 						-- Only proceed when there is TLP data and PCIe core is ready for said data
 						if (s_tlp_desc_fifo_empty = '0' and s_o_pcie_axis_tx_tready = '1') then
+							-- Reset counter for number of words to send for next TLP
+							s_tx_tlp_words_remain_cntr <= TO_INTEGER(UNSIGNED(s_tlp_desc_fifo_dout_len));
+
+							-- Number of 32-bit words in this TLP
+							s_tx_tlp_wr_length <= s_tlp_desc_fifo_dout_len;
+
+							s_tx_tlp_addr <= UNSIGNED(s_tlp_desc_fifo_dout_addr);
+
+							-- Save for later so we know if we should do a final read or not after TLP is sent
+							s_dma_complete_status_sel <= s_tlp_desc_fifo_dout_complete_status_sel;
+							s_dma_tlp_last <= s_tlp_desc_fifo_dout_tlast;
+
 							s_tlp_desc_fifo_rd_en <= '1';
 
 							s_tx_tlp_state <= TX_TLP_CLOCK1_STATE;
@@ -1084,6 +1112,8 @@ begin
 
 					when TX_TLP_CLOCK1_STATE =>
 						if (s_o_pcie_axis_tx_tready = '1') then
+							s_TX_TLP_CLOCK1_STATE_dbg_cntr <= s_TX_TLP_CLOCK1_STATE_dbg_cntr + 1;
+
 							s_tx_tlp_state <= TX_TLP_DATA_STATE;
 
 							-- Only transmitting one 32-bit word in this state due to 32-bit address
@@ -1120,6 +1150,8 @@ begin
 
 					when TX_RD_REQ_CLOCK0_STATE => 
 						if (s_o_pcie_axis_tx_tready = '1') then
+							s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr <= s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr + 1;
+
 							s_tx_tlp_state <= TX_RD_REQ_CLOCK1_STATE;
 						end if;
 

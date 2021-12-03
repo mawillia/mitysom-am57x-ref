@@ -272,7 +272,7 @@ begin
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
-						o_reg_data <= x"BAB6";
+						o_reg_data <= x"BAB7";
 
 
 					when CTRL_REG_OFFSET =>
@@ -451,6 +451,9 @@ begin
 			s_axi_fcbuff_cnt <= v_axi_fcbuff_cnt;
 		end if;
 	end process PATTERN_DATA_OUT_PROC;
+
+	--TODO: make register so we can enable interrupts if desired?
+	o_dma_complete_en <= '1';
 
 	o_dma_data_start_addr <= s_o_dma_start_addr;
 
