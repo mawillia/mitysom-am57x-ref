@@ -189,12 +189,31 @@ architecture rtl of pcie_dma_example_top is
 
 	signal s_pcie_dma_axi_clk : std_logic; --! Data on *_axis_* is synchronous to this clock.
 
-	signal s_pcie_dma_i_axis_c2h_tdata : STD_LOGIC_VECTOR(63 DOWNTO 0) := x"B0BAB4B1DEADBEEF";
-	signal s_pcie_dma_i_axis_c2h_tlast : STD_LOGIC := '0';
-	signal s_pcie_dma_i_axis_c2h_tvalid : STD_LOGIC := '1';
-	signal s_pcie_dma_o_axis_c2h_tready : STD_LOGIC := '0';
-	signal s_pcie_dma_i_axis_c2h_tkeep : STD_LOGIC_VECTOR(7 DOWNTO 0) := (others => '0');
-	
+	signal s_pcie_dma_i_dma_data_axis_tdata : STD_LOGIC_VECTOR(63 DOWNTO 0) := x"B0BAB4B1DEADBEEF";
+	signal s_pcie_dma_i_dma_data_axis_tlast : STD_LOGIC := '0';
+	signal s_pcie_dma_i_dma_data_axis_tvalid : STD_LOGIC := '1';
+	signal s_pcie_dma_o_dma_data_axis_tready : STD_LOGIC := '0';
+	signal s_pcie_dma_i_dma_data_axis_tkeep : STD_LOGIC_VECTOR(7 DOWNTO 0) := (others => '0');
+
+	signal s_pcie_dma_i_dma_data_start_addr : std_logic_Vector(31 downto 0) := (others => '0');
+
+	signal s_pcie_dma_i_dma_data_complete_status_sel : std_logic_vector(7 downto 0) := (others => '0');
+	signal s_pcie_dma_o_dma_data_complete : std_logic_vector(7 downto 0) := (others => '0');
+
+
+	signal s_tp_o_tdata : STD_LOGIC_VECTOR(63 DOWNTO 0) := x"B0BAB4B1DEADBEEF";
+	signal s_tp_o_axis_tlast : STD_LOGIC := '0';
+	signal s_tp_o_axis_tvalid : STD_LOGIC := '1';
+	signal s_tp_i_axis_tready : STD_LOGIC := '0';
+	signal s_tp_o_axis_tkeep : STD_LOGIC_VECTOR(7 DOWNTO 0) := (others => '0');
+
+	signal s_tp_o_dma_data_start_addr : std_logic_Vector(31 downto 0) := (others => '0');
+
+	signal s_tp_o_dma_data_complete_status_sel : std_logic := '0';
+	signal s_tp_i_dma_data_complete : std_logic := '0';
+
+	constant TP_DMA_COMPLETE_IDX : integer := 0;
+
 	constant NUM_IO : integer := 99;
 
 	-- gpio pins
@@ -218,7 +237,25 @@ architecture rtl of pcie_dma_example_top is
 	end component clk_wiz_0;
 
 	component pcie_dma is
+		generic 
+		(
+			g_max_tlp_size : natural := 32; --! Maximum number of 32-bit
+				--! words per TLP sent via PCIe. The larger this is
+				--! the more efficiently we can use PCIe bandwith at
+				--! the cost of needing a largerFIFO in this core.
+				--! Note that the AM57 reports it is limited to TLPs
+				--! of 64, but testing shows it's actually limited to
+				--! to 32. 
+			g_num_complete_bits : natural := 8 --! Indicate how many unique 
+				--! feedback lines are available for external FPGA core(s)
+				--! to be informed when transmission of an AXI packet
+				--! via the i_dma_data_axis_* interface has completed
+				--! (i.e. data is in AM57 memory and ready for access)
+		);
 		port (
+			--! Register interface to change some configurations)
+			--! Probably won't need to use this as FPGA core that generates
+			--! data for this core will control address, interrupts, etc.
 			i_reg_clk : in  std_logic;
 
 			i_reg_addr : in  std_logic_vector(5 downto 0);
@@ -227,28 +264,44 @@ architecture rtl of pcie_dma_example_top is
 			i_reg_wr : in  std_logic;
 			i_reg_rd : in  std_logic;
 			i_reg_cs : in  std_logic;
-
-			o_irq  : out std_logic := '0';
-			i_ilevel : in  std_logic_vector(1 downto 0) := "00";      
-			i_ivector : in  std_logic_vector(3 downto 0) := "0000";   
-
-			i_pcie_sys_clk : in std_logic; --! 100 MHz Clock use for PCIe
+			      
+			--! 100 MHz Clock use for PCIe
+			i_pcie_sys_clk : in std_logic; 
 			i_pcie_sys_rst_n : in std_logic;
 
-			--! PCIe pins:
+			--! PCIe physical layer pins:
 			o_pci_exp_txp : out std_logic_vector(1 downto 0);
 			o_pci_exp_txn : out std_logic_vector(1 downto 0);
 			i_pci_exp_rxp : in  std_logic_vector(1 downto 0);
 			i_pci_exp_rxn : in  std_logic_vector(1 downto 0);
 
-			o_axi_clk : out std_logic; --! Data on *_axis_* is synchronous to this clock.
+			o_pcie_axi_clk : out std_logic; --! 125 MHz clock used by PCIe Core. Feel free to use 
+				--! use this as i_dma_data_clk, but read notes for that signal regarding throughput
+				--! and backpressure!
 
-			--! Card (FPGA) to Host (AM57) data interface. This data will be DMA'ed to the AM57 RC (Memory Rd/Wr access L3_MAIN in AM57):
-			i_axis_c2h_tdata : IN STD_LOGIC_VECTOR(63 DOWNTO 0);
-			i_axis_c2h_tlast : IN STD_LOGIC;
-			i_axis_c2h_tvalid : IN STD_LOGIC;
-			o_axis_c2h_tready : OUT STD_LOGIC;
-			i_axis_c2h_tkeep : IN STD_LOGIC_VECTOR(7 DOWNTO 0)
+			--! Interface for FPGA core to provide data to core for DMAing to AM57 via PCIe
+			i_dma_data_clk : in std_logic; --! Clock that is synchronous to incoming data to be DMA'ed. Note that 
+				--! internally the core runs on a clock of 125 MHz so be sure to design properly to make sure
+				--! you are not using too much bandwidth (and watch tready in case the core needs to apply back pressure).
+				--! Note that max throughput to the PCIe sub core is 8 Gbit/s (2 lanes at 5.0 GT/s with 8b10b encoding).
+				--! Also note that in order to create TLPs header data needs to be added so you will get back pressure
+				--! if you try to use full 8 Gbit/s throughput (overhead is 3 32-bit words per TLP).
+
+			i_dma_data_axis_tdata : IN STD_LOGIC_VECTOR(63 DOWNTO 0); --! Data words to be written to AM57 Memory Space
+			i_dma_data_axis_tlast : IN STD_LOGIC; --! Indicates last data word of a packet.
+			i_dma_data_axis_tvalid : IN STD_LOGIC; --! Indicates when i_*_axis inputs are valid.
+			o_dma_data_axis_tready : OUT STD_LOGIC; --! Indicates backpressure (i.e. if current data word needs to be held as is).
+			i_dma_data_axis_tkeep : IN STD_LOGIC_VECTOR(7 DOWNTO 0); --! Should always be all '1'
+
+			i_dma_data_start_addr : in std_logic_vector(31 downto 0); --! Indicates the AM57 physical address where the incoming packet data will start being written.
+				--! Must be constant and valid throughout entire packet.
+
+			i_dma_data_complete_status_sel : in std_logic_vector(g_num_complete_bits-1 downto 0); --! Indicates which o_complete bit should have a rising edge to indicate that the last TLP write has completed.
+				--! Must be constant and valid throughout entire packet.
+			o_dma_data_complete : out std_logic_vector(g_num_complete_bits-1 downto 0) --! Either edge transition on bit indicates that final TLP write has finished and AM57 can be 
+				--! interrupted to indicate data is ready to be read. Note that i_complete_status_sel is used to indicate which bit should go high in relation to
+				--! which core may have made a request. This is necessary since we are not using MSIs and sending final write TLP tells us nothing about when
+				--! that write actually compelte. Instead we need to do a read TLP following final write TLP so we don't end up with a race condition.
 		);
 	end component pcie_dma;
 
@@ -269,11 +322,20 @@ architecture rtl of pcie_dma_example_top is
 			      
 			i_axi_clk : in std_logic; --! Data on *_axis_* is synchronous to this clock.
 
+			--! Used to stream data to pcie_dma core which is to be DMA'ed into AM57 memory. Used in conjunction with *_dma_* signals.
 			o_axis_tdata : out STD_LOGIC_VECTOR(63 DOWNTO 0); 
 			o_axis_tlast : out STD_LOGIC; 
 			o_axis_tvalid : out STD_LOGIC;
 			i_axis_tready : in STD_LOGIC;
-			o_axis_tkeep : out STD_LOGIC_VECTOR(7 DOWNTO 0) 
+			o_axis_tkeep : out STD_LOGIC_VECTOR(7 DOWNTO 0);
+
+			o_dma_data_start_addr : out std_logic_vector(31 downto 0); --! Indicates the AM57 physical address where the incoming packet data will start being written.
+				--! Must be constant and valid throughout entire packet.
+
+			o_dma_complete_en : out std_logic; --! If high this requests that the PCIe core report back via i_dma_data_complete once that 
+				--! last TLP has been successfully written. 
+			i_dma_data_complete : in std_logic --! Either edge transition on bit indicates that final TLP write has finished and AM57 can be 
+				--! interrupted too access memory
 		);
 	end component test_pattern_stream;
 	
@@ -416,10 +478,6 @@ begin
 			i_reg_rd => s_core_rd,
 			i_reg_cs => s_core_cs(3),
 
-			o_irq => open,
-			i_ilevel => "00",
-			i_ivector => "0000",
-
 			i_pcie_sys_clk => sys_clk,
 			i_pcie_sys_rst_n => sys_rst_n_c,
 
@@ -428,15 +486,34 @@ begin
 			i_pci_exp_rxp => pci_exp_rxp,
 			i_pci_exp_rxn => pci_exp_rxn,
 
-			o_axi_clk => s_pcie_dma_axi_clk,
+			o_pcie_axi_clk => s_pcie_dma_axi_clk,
 
-			--! Card (FPGA) to Host (AM57) data interface. This data will be DMA'ed to the AM57 RC (Memory Rd/Wr access L3_MAIN in AM57):
-			i_axis_c2h_tdata => s_pcie_dma_i_axis_c2h_tdata,
-			i_axis_c2h_tlast => s_pcie_dma_i_axis_c2h_tlast,
-			i_axis_c2h_tvalid => s_pcie_dma_i_axis_c2h_tvalid,
-			o_axis_c2h_tready => s_pcie_dma_o_axis_c2h_tready,
-			i_axis_c2h_tkeep => s_pcie_dma_i_axis_c2h_tkeep
+			i_dma_data_clk => s_pcie_dma_axi_clk,
+
+			i_dma_data_axis_tdata => s_pcie_dma_i_dma_data_axis_tdata,
+			i_dma_data_axis_tlast => s_pcie_dma_i_dma_data_axis_tlast,
+			i_dma_data_axis_tvalid => s_pcie_dma_i_dma_data_axis_tvalid,
+			o_dma_data_axis_tready => s_pcie_dma_o_dma_data_axis_tready,
+			i_dma_data_axis_tkeep => s_pcie_dma_i_dma_data_axis_tkeep,
+
+			i_dma_data_start_addr => s_pcie_dma_i_dma_data_start_addr,
+
+			i_dma_data_complete_status_sel => s_pcie_dma_i_dma_data_complete_status_sel,
+			o_dma_data_complete => s_pcie_dma_o_dma_data_complete
 		);
+
+
+	-- This is where logic would if we needed to support muxing multiple cores to all use PCIe interface
+	s_pcie_dma_i_dma_data_axis_tdata <= s_tp_o_tdata;
+	s_pcie_dma_i_dma_data_axis_tlast <= s_tp_o_axis_tlast;
+	s_pcie_dma_i_dma_data_axis_tvalid <= s_tp_o_axis_tvalid;
+	s_tp_i_axis_tready <= s_pcie_dma_o_dma_data_axis_tready;
+	s_pcie_dma_i_dma_data_axis_tkeep <= s_tp_o_axis_tkeep;
+
+	s_pcie_dma_i_dma_data_start_addr <= s_tp_o_dma_data_start_addr;
+	s_pcie_dma_i_dma_data_complete_status_sel(TP_DMA_COMPLETE_IDX) <= s_tp_o_dma_data_complete_status_sel;
+	s_tp_i_dma_data_complete <= s_pcie_dma_o_dma_data_complete(TP_DMA_COMPLETE_IDX);
+
 
 	TEST_PATTERN_INST : test_pattern_stream 
 		port map (
@@ -455,11 +532,16 @@ begin
 			      
 			i_axi_clk => s_pcie_dma_axi_clk,
 
-			o_axis_tdata => s_pcie_dma_i_axis_c2h_tdata,
-			o_axis_tlast => s_pcie_dma_i_axis_c2h_tlast,
-			o_axis_tvalid => s_pcie_dma_i_axis_c2h_tvalid,
-			i_axis_tready => s_pcie_dma_o_axis_c2h_tready,
-			o_axis_tkeep => s_pcie_dma_i_axis_c2h_tkeep
+			o_axis_tdata => s_tp_o_tdata,
+			o_axis_tlast => s_tp_o_axis_tlast,
+			o_axis_tvalid => s_tp_o_axis_tvalid,
+			i_axis_tready => s_tp_i_axis_tready,
+			o_axis_tkeep => s_tp_o_axis_tkeep,
+
+			o_dma_data_start_addr => s_tp_o_dma_data_start_addr,
+
+			o_dma_complete_en => s_tp_o_dma_data_complete_status_sel,
+			i_dma_data_complete => s_tp_i_dma_data_complete
 		);
 
 

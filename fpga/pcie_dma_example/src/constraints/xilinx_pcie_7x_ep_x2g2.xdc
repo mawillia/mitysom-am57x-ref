@@ -52,7 +52,7 @@
 ## Version    : 3.3
 #
 ###############################################################################
-# User Configuration 
+# User Configuration
 # Link Width   - x2
 # Link Speed   - gen2
 # Family       - artix7
@@ -90,24 +90,18 @@ set_property LOC IBUFDS_GTE2_X0Y0 [get_cells */refclk_ibuf]
 # Timing Constraints
 ###############################################################################
 #
-create_clock -name sys_clk -period 10 [get_ports sys_clk_p]
+create_clock -period 10.000 -name sys_clk [get_ports sys_clk_p]
 #
-# 
-set_false_path -to [get_pins {*/pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/S0}]
-set_false_path -to [get_pins {*/pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/S1}]
+#
+set_false_path -to [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/S0]
+set_false_path -to [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/S1]
 #
 #
 create_generated_clock -name clk_125mhz_x0y0 [get_pins */pcie_7x_0_support_i/pipe_clock_i/mmcm_i/CLKOUT0]
 create_generated_clock -name clk_250mhz_x0y0 [get_pins */pcie_7x_0_support_i/pipe_clock_i/mmcm_i/CLKOUT1]
-create_generated_clock -name clk_125mhz_mux_x0y0 \ 
-                        -source [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I0] \
-                        -divide_by 1 \
-                        [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/O]
+create_generated_clock -name clk_125mhz_mux_x0y0 -source [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I0] -divide_by 1 [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/O]
 #
-create_generated_clock -name clk_250mhz_mux_x0y0 \ 
-                        -source [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I1] \
-                        -divide_by 1 -add -master_clock [get_clocks -of [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I1]] \
-                        [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/O]
+create_generated_clock -name clk_250mhz_mux_x0y0 -source [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I1] -divide_by 1 -add -master_clock [get_clocks -of [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I1]] [get_pins */pcie_7x_0_support_i/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/O]
 #
 set_clock_groups -name pcieclkmux -physically_exclusive -group clk_125mhz_mux_x0y0 -group clk_250mhz_mux_x0y0
 
@@ -124,3 +118,5 @@ set_false_path -from [get_ports sys_rst_n]
 ###############################################################################
 # End
 ###############################################################################
+
+
