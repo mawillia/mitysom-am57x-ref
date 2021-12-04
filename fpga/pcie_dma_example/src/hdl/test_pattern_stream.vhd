@@ -272,7 +272,7 @@ begin
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
-						o_reg_data <= x"BAB7";
+						o_reg_data <= x"BAB8";
 
 
 					when CTRL_REG_OFFSET =>
@@ -394,8 +394,6 @@ begin
 
 			s_tp_data_ram_re <= '0';
 
-			s_tp_data_last <= '0';
-
 			s_tp_data_ram_re_r1 <= s_tp_data_ram_re;
 
 			if (s_srst_axi = '1') then
@@ -405,22 +403,25 @@ begin
 				s_tp_data_ram_raddr <= s_tp_data_ram_start_raddr;
 				
 				s_tp_data_cntr <= 0;
+
+				s_tp_data_last <= '0';
 			else
-				-- Logic for reading data from buffer and reacting to flow control from AXI bus
-				if (s_axi_fcbuff_cnt > 0) then
-					s_o_axis_tvalid <= '1';
+				-- Read data from BRAM if we should still creating packout packet/stream
+				if (v_axi_fcbuff_cnt < FCBUFF_MAX_SIZE-3) then
+					--TODO: add way to queue multiple requests with delays (if desired) inbetween??
+					-- Currently we handle one packet output request when taken out of reset
+					if (s_tp_data_cntr < TO_INTEGER(UNSIGNED(s_tp_packet_size))) then
+						s_tp_data_ram_re <= '1';
 
-					if (i_axis_tready = '1') then
-						v_axi_fcbuff_cnt := v_axi_fcbuff_cnt - 1;
+						s_tp_data_cntr <= s_tp_data_cntr + 1;
 					end if;
-				end if;	
 
-				-- Increment address after sample on output of FIFO marked as valid
-				if (s_o_axis_tvalid = '1') then
-					s_axi_fcbuff_raddr <= s_axi_fcbuff_raddr + 1;
+					if (s_tp_data_cntr = TO_INTEGER(UNSIGNED(s_tp_packet_size))-1) then
+						s_tp_data_last <= '1';
+					end if;
 				end if;
 
-				-- Logic for filling flow control buffer (and pushing test pattern data out of RAM at desired rate)
+				-- Logic for filling flow control buffer (and pushing data out of RAM at desired rate)
 				if (s_tp_data_ram_re = '1') then
 					v_axi_fcbuff_cnt := v_axi_fcbuff_cnt + 1;
 					s_tp_data_ram_raddr <= STD_LOGIC_VECTOR(UNSIGNED(s_tp_data_ram_raddr) + 1);
@@ -433,18 +434,18 @@ begin
 					s_axi_fcbuff_waddr <= s_axi_fcbuff_waddr + 1;
 				end if;
 
-				if (v_axi_fcbuff_cnt < FCBUFF_MAX_SIZE-3) then
-					--TODO: add way to queue multiple requests with delays (if desired) inbetween??
-					-- Currently we handle one packet output request when taken out of reset
-					if (s_tp_data_cntr < TO_INTEGER(UNSIGNED(s_tp_packet_size))) then
-						s_tp_data_ram_re <= '1';
+				-- Logic for reading data from buffer and reacting to flow control from AXI bus
+				if (s_axi_fcbuff_cnt > 0) then
+					s_o_axis_tvalid <= '1';
 
-						s_tp_data_cntr <= s_tp_data_cntr + 1;
+					if (i_axis_tready = '1') then
+						v_axi_fcbuff_cnt := v_axi_fcbuff_cnt - 1;
 					end if;
+				end if;	
 
-					if (s_tp_data_cntr = s_tp_packet_size-1) then
-						s_tp_data_last <= '1';
-					end if;
+				-- Increment address after sample on output of FIFO marked as valid
+				if (s_o_axis_tvalid = '1' and i_axis_tready = '1') then
+					s_axi_fcbuff_raddr <= s_axi_fcbuff_raddr + 1;
 				end if;
 			end if;
 

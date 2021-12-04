@@ -769,7 +769,7 @@ begin
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
 						s_ver_rd <= i_reg_rd;
-						o_reg_data <= x"B1B7"; --s_version_reg; --TODO: put back to real core version stuff
+						o_reg_data <= x"B1B8"; --s_version_reg; --TODO: put back to real core version stuff
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
@@ -955,7 +955,7 @@ begin
 						s_tlp_desc_fifo_din_len <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_dma_data_in_tlp_word_cntr+2, 10));
 						s_dma_data_in_tlp_word_cntr <= 0;
 						s_tlp_desc_fifo_din_addr <= i_dma_data_start_addr + s_dma_data_in_total_word_cntr * 4;
-						s_dma_data_in_total_word_cntr <= s_dma_data_in_tlp_word_cntr + 2;
+						s_dma_data_in_total_word_cntr <= s_dma_data_in_total_word_cntr + s_dma_data_in_tlp_word_cntr + 2;
 					end if;
 
 					if (i_dma_data_axis_tlast = '1') then
