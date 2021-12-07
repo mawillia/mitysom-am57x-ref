@@ -39,8 +39,8 @@ component core_version
 		year          : in std_logic_vector(4 downto 0);    -- year since 2000
 		month         : in std_logic_vector(3 downto 0);    -- month (1-12)
 		day           : in std_logic_vector(4 downto 0);    -- day (1-32)
-		ilevel        : in std_logic_vector(1 downto 0) := "00";       -- interrupt level (0=4,1=5,2=6,3=7)
-		ivector       : in std_logic_vector(3 downto 0) := "0000";    -- interrupt vector (0 through 31)
+		ilevel        : in std_logic := '0';                -- interrupt level (0=SYS_NIRQ2 or 1=SYS_NIRQ1)
+		ivector       : in std_logic_vector(4 downto 0) := "00000";    -- interrupt vector (0 through 31)
 		o_data        : out std_logic_vector(15 downto 0)
 	);
 end component;
@@ -67,7 +67,7 @@ component base_module is
 		i_rd_en         : in  std_logic;
 		i_be_r          : in  std_logic_vector(1 downto 0);
 
-		i_irq_map       : in  bus16_vector(1 downto 0) := (others=>(others=>'0'));
+		i_irq_map       : in  bus32_vector(1 downto 0) := (others=>(others=>'0'));
 		o_sys_nirq      : out std_logic_vector(1 downto 0)
 	);
 end component;
@@ -113,8 +113,8 @@ component gpio is
 	   i_rd_en         : in  std_logic;
 	   i_cs            : in  std_logic;
 	   o_irq           : out std_logic := '0';
-	   i_ilevel        : in  std_logic_vector(1 downto 0) := "00";      
-	   i_ivector       : in  std_logic_vector(3 downto 0) := "0000";   
+	   i_ilevel        : in  std_logic := '0';      
+	   i_ivector       : in  std_logic_vector(4 downto 0) := "00000";   
 	   i_io            : in  std_logic_vector(NUM_BANKS*NUM_IO_PER_BANK-1 downto 0) := (others=>'0');
 	   t_io            : out std_logic_vector(NUM_BANKS*NUM_IO_PER_BANK-1 downto 0); --! Desired direction of io by driver. '0' = output. '1' = input.
 	   o_io            : out std_logic_vector(NUM_BANKS*NUM_IO_PER_BANK-1 downto 0);

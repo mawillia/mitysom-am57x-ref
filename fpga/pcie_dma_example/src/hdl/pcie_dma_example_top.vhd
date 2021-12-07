@@ -164,12 +164,26 @@ architecture rtl of pcie_dma_example_top is
 	------------------------------------
 	-- Constants
 	------------------------------------
-	constant APPLICATION_ID : std_logic_vector(7 downto 0) := std_logic_vector(to_unsigned( 1, 8));
-	constant VERSION_MAJOR : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
-	constant VERSION_MINOR : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 1, 4));
-	constant YEAR : std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(20, 5));
-	constant MONTH : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(11, 4));
-	constant DAY : std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(04, 5));
+	constant APPLICATION_ID : std_logic_vector(7 downto 0) := std_logic_vector(to_unsigned(42, 8));
+	constant VERSION_MAJOR : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 2, 4));
+	constant VERSION_MINOR : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned( 0, 4));
+	constant YEAR : std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(21, 5));
+	constant MONTH : std_logic_vector(3 downto 0) := std_logic_vector(to_unsigned(12, 4));
+	constant DAY : std_logic_vector(4 downto 0) := std_logic_vector(to_unsigned(06, 5));
+
+	constant BM_CORE_CS:    integer := 0;
+	constant GPIO1_CORE_CS: integer := 1;
+	constant GPIO2_CORE_CS: integer := 2;
+	constant PCIE_DMA_CORE_CS:  integer := 3;
+	constant TEST_PATTERN_CORE_CS:  integer := 4;
+
+	constant GPIO1_IRQ_NUM: integer := 0;
+	constant GPIO2_IRQ_NUM: integer := 0;
+	constant TEST_PATTERN_IRQ_NUM: integer := 0;
+	constant GPIO1_IRQ_VEC: integer := 0;
+	constant GPIO2_IRQ_VEC: integer := 1;
+	constant TEST_PATTERN_IRQ_VEC: integer := 2;
+
 
 	------------------------------------
 	-- Signals 
@@ -185,7 +199,7 @@ architecture rtl of pcie_dma_example_top is
 	signal s_core_rd : std_logic := '0';
 	signal s_core_wr : std_logic := '0';
 	
-	signal s_irq_map : bus16_vector(1 downto 0) := (others=>(others=>'0'));
+	signal s_irq_map : bus32_vector(1 downto 0) := (others=>(others=>'0'));
 
 	signal s_pcie_dma_axi_clk : std_logic; --! Data on *_axis_* is synchronous to this clock.
 
@@ -317,8 +331,8 @@ architecture rtl of pcie_dma_example_top is
 			i_reg_cs : in  std_logic;
 
 			o_irq  : out std_logic := '0';
-			i_ilevel : in  std_logic_vector(1 downto 0) := "00";      
-			i_ivector : in  std_logic_vector(3 downto 0) := "0000";   
+			i_ilevel : in  std_logic := '0';      
+			i_ivector : in  std_logic_vector(4 downto 0) := "00000";   
 			      
 			i_axi_clk : in std_logic; --! Data on *_axis_* is synchronous to this clock.
 
@@ -400,7 +414,7 @@ begin
 	)
 	port map (
 		i_clk           => clk_100,
-		i_cs            => s_core_cs(0),
+		i_cs            => s_core_cs(BM_CORE_CS),
 		i_ID            => APPLICATION_ID,
 		i_version_major => VERSION_MAJOR,
 		i_version_minor => VERSION_MINOR,
@@ -409,7 +423,7 @@ begin
 		i_day           => DAY,
 		i_ABus          => s_core_addr,
 		i_DBus          => s_core_edi,
-		o_DBus          => s_core_edo(0),
+		o_DBus          => s_core_edo(BM_CORE_CS),
 		i_wr_en         => s_core_wr,
 		i_rd_en         => s_core_rd,
 		i_be_r          => s_core_be,
@@ -426,13 +440,13 @@ begin
 			clk             => clk_100,
 			i_ABus          => s_core_addr,
 			i_DBus          => s_core_edi,
-			o_DBus          => s_core_edo(1),
+			o_DBus          => s_core_edo(GPIO1_CORE_CS),
 			i_wr_en         => s_core_wr,
 			i_rd_en         => s_core_rd,
-			i_cs            => s_core_cs(1),
-			o_irq           => s_irq_map(0)(0),
-			i_ilevel        => "00",
-			i_ivector       => "0000",  
+			i_cs            => s_core_cs(GPIO1_CORE_CS),
+			o_irq           => s_irq_map(GPIO1_IRQ_NUM)(GPIO1_IRQ_VEC),
+			i_ilevel        => '0',
+			i_ivector       => "00000",  
 			i_io            => s_gpio_in(63 downto 0),
 			t_io            => t_gpio(63 downto 0),
 			o_io            => s_gpio_out(63 downto 0),
@@ -449,13 +463,13 @@ begin
 			clk             => clk_100,
 			i_ABus          => s_core_addr,
 			i_DBus          => s_core_edi,
-			o_DBus          => s_core_edo(2),
+			o_DBus          => s_core_edo(GPIO2_CORE_CS),
 			i_wr_en         => s_core_wr,
 			i_rd_en         => s_core_rd,
-			i_cs            => s_core_cs(2),
-			o_irq           => s_irq_map(0)(1),
-			i_ilevel        => "00",
-			i_ivector       => "0001",  
+			i_cs            => s_core_cs(GPIO2_CORE_CS),
+			o_irq           => s_irq_map(GPIO2_IRQ_NUM)(GPIO2_IRQ_VEC),
+			i_ilevel        => '0',
+			i_ivector       => "00001",  
 			i_io(34 downto 0)  => s_gpio_in(98 downto 64),
 			i_io(47 downto 35) => (others=>'0'),
 			t_io(34 downto 0)  => t_gpio(98 downto 64),
@@ -473,10 +487,10 @@ begin
 
 			i_reg_addr => s_core_addr,
 			i_reg_data => s_core_edi,
-			o_reg_data => s_core_edo(3),
+			o_reg_data => s_core_edo(PCIE_DMA_CORE_CS),
 			i_reg_wr => s_core_wr,
 			i_reg_rd => s_core_rd,
-			i_reg_cs => s_core_cs(3),
+			i_reg_cs => s_core_cs(PCIE_DMA_CORE_CS),
 
 			i_pcie_sys_clk => sys_clk,
 			i_pcie_sys_rst_n => sys_rst_n_c,
@@ -521,14 +535,14 @@ begin
 
 			i_reg_addr => s_core_addr,
 			i_reg_data => s_core_edi,
-			o_reg_data => s_core_edo(4),
+			o_reg_data => s_core_edo(TEST_PATTERN_CORE_CS),
 			i_reg_wr => s_core_wr,
 			i_reg_rd => s_core_rd,
-			i_reg_cs => s_core_cs(4),
+			i_reg_cs => s_core_cs(TEST_PATTERN_CORE_CS),
 
-			o_irq => open,
-			i_ilevel => "00",
-			i_ivector => "0000",
+			o_irq => s_irq_map(TEST_PATTERN_IRQ_NUM)(TEST_PATTERN_IRQ_VEC),
+			i_ilevel => '0',
+			i_ivector => "00010",  
 			      
 			i_axi_clk => s_pcie_dma_axi_clk,
 

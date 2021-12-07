@@ -193,12 +193,12 @@ architecture rtl of pcie_dma is
 	-- Constants
 	------------------------------------
 
-	constant CORE_VERSION_MAJOR:  std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 01, 4));
-	constant CORE_VERSION_MINOR:  std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 08, 4));
+	constant CORE_VERSION_MAJOR:  std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 02, 4));
+	constant CORE_VERSION_MINOR:  std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 00, 4));
 	constant CORE_ID:             std_logic_vector(7 downto 0) := std_logic_vector( to_unsigned( 69, 8));
 	constant CORE_YEAR:           std_logic_vector(4 downto 0) := std_logic_vector( to_unsigned( 21, 5));
-	constant CORE_MONTH:          std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 11, 4));
-	constant CORE_DAY:            std_logic_vector(4 downto 0) := std_logic_vector( to_unsigned( 23, 5));
+	constant CORE_MONTH:          std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 12, 4));
+	constant CORE_DAY:            std_logic_vector(4 downto 0) := std_logic_vector( to_unsigned( 07, 5));
 
 	---
 	-- Register Offsets:
@@ -769,7 +769,7 @@ begin
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
 						s_ver_rd <= i_reg_rd;
-						o_reg_data <= x"B1B8"; --s_version_reg; --TODO: put back to real core version stuff
+						o_reg_data <= s_version_reg; 
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;

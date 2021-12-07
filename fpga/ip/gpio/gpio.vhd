@@ -37,8 +37,8 @@ entity gpio is
       i_rd_en         : in  std_logic;
       i_cs            : in  std_logic;
       o_irq           : out std_logic := '0';
-      i_ilevel        : in  std_logic_vector(1 downto 0) := "00";      
-      i_ivector       : in  std_logic_vector(3 downto 0) := "0000";   
+      i_ilevel        : in  std_logic := '0';      
+      i_ivector       : in  std_logic_vector(4 downto 0) := "00000";   
       i_io            : in  std_logic_vector(NUM_BANKS*NUM_IO_PER_BANK-1 downto 0) := (others=>'0');
       t_io            : out std_logic_vector(NUM_BANKS*NUM_IO_PER_BANK-1 downto 0); --! Desired direction of io by driver. '0' = output. '1' = input.
       o_io            : out std_logic_vector(NUM_BANKS*NUM_IO_PER_BANK-1 downto 0);

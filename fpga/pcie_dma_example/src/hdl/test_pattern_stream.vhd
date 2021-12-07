@@ -18,6 +18,9 @@ use unisim.vcomponents.all;
 use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
 
+library work;
+use work.MitySOM_AM57_pkg.all;
+
 entity test_pattern_stream is
 	port (
 		i_reg_clk : in  std_logic;
@@ -29,9 +32,9 @@ entity test_pattern_stream is
 		i_reg_rd : in  std_logic;
 		i_reg_cs : in  std_logic;
 
-		o_irq  : out std_logic := '0';
-		i_ilevel : in  std_logic_vector(1 downto 0) := "00";      
-		i_ivector : in  std_logic_vector(3 downto 0) := "0000";   
+		o_irq : out std_logic := '0';
+		i_ilevel : in  std_logic := '0';      
+		i_ivector : in  std_logic_vector(4 downto 0) := "00000";   
 		      
 		i_axi_clk : in std_logic; --! Data on *_axis_* is synchronous to this clock.
 
@@ -79,6 +82,14 @@ architecture rtl of test_pattern_stream is
 	constant FCBUFF_MAX_SIZE : integer := 8;
 
 
+	constant CORE_VERSION_MAJOR:  std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 02, 4));
+	constant CORE_VERSION_MINOR:  std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 00, 4));
+	constant CORE_ID:             std_logic_vector(7 downto 0) := std_logic_vector( to_unsigned( 70, 8));
+	constant CORE_YEAR:           std_logic_vector(4 downto 0) := std_logic_vector( to_unsigned( 21, 5));
+	constant CORE_MONTH:          std_logic_vector(3 downto 0) := std_logic_vector( to_unsigned( 12, 4));
+	constant CORE_DAY:            std_logic_vector(4 downto 0) := std_logic_vector( to_unsigned( 07, 5));
+
+
 	------------------------------------
 	-- Signals 
 	------------------------------------
@@ -86,6 +97,11 @@ architecture rtl of test_pattern_stream is
 	signal s_srst_reg : std_logic := '1';
 	signal s_srst_meta : std_logic := '1';
 	signal s_srst_axi : std_logic := '1';
+
+	signal s_irq_en_reg : std_logic := '0';
+
+	signal s_ver_rd : std_logic := '0';
+	signal s_version_reg : std_logic_vector(15 downto 0);
 
 	signal s_tp_data_ram_start_raddr_reg : std_logic_vector(9 downto 0) := (others => '0');
 	signal s_tp_data_ram_start_raddr_meta : std_logic_vector(9 downto 0) := (others => '0');
@@ -193,6 +209,22 @@ architecture rtl of test_pattern_stream is
 	end component;         
 
 begin
+	version : core_version
+	   port map(
+	      clk           => i_reg_clk,
+	      rd            => s_ver_rd,
+	      ID            => CORE_ID,              -- assigned ID number, 0xFF if unassigned
+	      version_major => CORE_VERSION_MAJOR,   -- major version number 1-15
+	      version_minor => CORE_VERSION_MINOR,   -- minor version number 0-15
+	      year          => CORE_YEAR,            -- year since 2000
+	      month         => CORE_MONTH,           -- month (1-12)
+	      day           => CORE_DAY,             -- day (1-31)
+	      ilevel        => i_ilevel,
+	      ivector       => i_ivector,
+	      o_data        => s_version_reg
+	      );
+
+	o_irq <= s_dma_complete when (s_irq_en_reg = '1') else '0';
 
 	REG_WRITE_PROC : process(i_reg_clk)
 	begin
@@ -206,7 +238,6 @@ begin
 
 			if (s_i_dma_data_complete_r1 /= s_i_dma_data_complete_r2) then
 				s_dma_complete <= '1';
-				--TODO: also drive o_irq appropriately. Probably need mask register, etc.
 			end if;
 
 			if (s_tp_data_ram_we = '1') then
@@ -220,7 +251,7 @@ begin
 
 					when CTRL_REG_OFFSET =>
 						s_srst_reg <= i_reg_data(0);
-
+						s_irq_en_reg <= i_reg_data(1);
 
 					when ISR_REG_OFFSET =>
 						if (i_reg_data(0) = '1') then
@@ -269,14 +300,18 @@ begin
 		if rising_edge(i_reg_clk) then
 			o_reg_data <= (others => '0');
 
+			s_ver_rd <= '0';
+
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
-						o_reg_data <= x"BAB8";
+						s_ver_rd <= i_reg_rd;
+						o_reg_data <= s_version_reg; 
 
 
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
+						o_reg_data(1) <= s_irq_en_reg;
 
 
 					when ISR_REG_OFFSET =>

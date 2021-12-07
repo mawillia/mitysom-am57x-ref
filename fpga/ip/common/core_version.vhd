@@ -17,8 +17,8 @@ entity core_version is
 		year          : in std_logic_vector(4 downto 0);    -- year since 2000
 		month         : in std_logic_vector(3 downto 0);    -- month (1-12)
 		day           : in std_logic_vector(4 downto 0);    -- day (1-32)
-		ilevel        : in std_logic_vector(1 downto 0) := "00";       -- interrupt level (0=4,1=5,2=6,3=7)
-		ivector       : in std_logic_vector(3 downto 0) := "0000";    -- interrupt vector (0 through 15)
+		ilevel        : in std_logic := '0';                -- interrupt level (0=SYS_NIRQ2 or 1=SYS_NIRQ1)
+		ivector       : in std_logic_vector(4 downto 0) := "00000";    -- interrupt vector (0 through 31)
 		o_data        : out std_logic_vector(15 downto 0)
 	);
 end core_version;
