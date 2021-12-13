@@ -177,9 +177,9 @@ architecture rtl of pcie_dma_example_top is
 	constant PCIE_DMA_CORE_CS:  integer := 3;
 	constant TEST_PATTERN_CORE_CS:  integer := 4;
 
-	constant GPIO1_IRQ_NUM: integer := 0;
+	constant GPIO1_IRQ_NUM: integer := 1;
 	constant GPIO2_IRQ_NUM: integer := 0;
-	constant TEST_PATTERN_IRQ_NUM: integer := 0;
+	constant TEST_PATTERN_IRQ_NUM: integer := 1;
 	constant GPIO1_IRQ_VEC: integer := 0;
 	constant GPIO2_IRQ_VEC: integer := 1;
 	constant TEST_PATTERN_IRQ_VEC: integer := 2;
@@ -198,6 +198,10 @@ architecture rtl of pcie_dma_example_top is
 	signal s_core_edo : bus16_vector((2**DECODE_BITS)-1 downto 0) := (others=>(others=>'0'));
 	signal s_core_rd : std_logic := '0';
 	signal s_core_wr : std_logic := '0';
+
+	signal s_sys_nirq : std_logic_vector(1 downto 0) := (others => '0');
+	signal s_debug_irq : std_logic := '0';
+	signal s_debug_irq_counter : unsigned(31 downto 0) := (others => '0');
 	
 	signal s_irq_map : bus32_vector(1 downto 0) := (others=>(others=>'0'));
 
@@ -428,7 +432,7 @@ begin
 		i_rd_en         => s_core_rd,
 		i_be_r          => s_core_be,
 		i_irq_map       => s_irq_map,
-		o_sys_nirq      => o_sys_nirq
+		o_sys_nirq      => s_sys_nirq
 	);
 
 	gp1 : gpio 
@@ -558,12 +562,29 @@ begin
 			i_dma_data_complete => s_tp_i_dma_data_complete
 		);
 
+	debug_irq : process(clk_100)
+	begin
+		if rising_edge(clk_100) then
+			if s_debug_irq_counter >= x"02FAF080" then
+				s_debug_irq_counter <= (others => '0');
+				s_debug_irq <= not(s_debug_irq);
+			else
+				s_debug_irq_counter <= s_debug_irq_counter + 1;
+			end if;
+		end if;
+	end process;
+
+	LA18_N <= s_debug_irq;
+	LA18_P <= s_irq_map(GPIO1_IRQ_NUM)(GPIO1_IRQ_VEC);
+	LA23_N <= s_sys_nirq(0);
+	LA23_P <= s_sys_nirq(1);
+	o_sys_nirq <= s_sys_nirq;
 
 	-- IO assignments here
-	LA18_N <= s_gpio_out(0) when t_gpio(0)   = '0' else 'Z';
-	LA18_P <= s_gpio_out(1) when t_gpio(1)   = '0' else 'Z';	
-	LA23_N <= s_gpio_out(2) when t_gpio(2)   = '0' else 'Z';
-	LA23_P <= s_gpio_out(3) when t_gpio(3)   = '0' else 'Z';
+	--LA18_N <= s_gpio_out(0) when t_gpio(0)   = '0' else 'Z';
+	--LA18_P <= s_gpio_out(1) when t_gpio(1)   = '0' else 'Z';	
+	--LA23_N <= s_gpio_out(2) when t_gpio(2)   = '0' else 'Z';
+	--LA23_P <= s_gpio_out(3) when t_gpio(3)   = '0' else 'Z';
 	LA14_N <= s_gpio_out(4) when t_gpio(4)   = '0' else 'Z';
 	LA14_P <= s_gpio_out(5) when t_gpio(5)   = '0' else 'Z';
 	LA17_N <= s_gpio_out(6) when t_gpio(6)   = '0' else 'Z';
