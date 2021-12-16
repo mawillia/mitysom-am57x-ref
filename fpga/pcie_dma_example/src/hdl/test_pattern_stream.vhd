@@ -244,6 +244,10 @@ begin
 				s_tp_data_ram_waddr <= STD_LOGIC_VECTOR(UNSIGNED(s_tp_data_ram_waddr) + 1);
 			end if;
 
+			if (s_srst_reg = '1') then
+				s_dma_complete <= '0';
+			end if;
+
 			if (i_reg_cs = '1' and i_reg_wr = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>

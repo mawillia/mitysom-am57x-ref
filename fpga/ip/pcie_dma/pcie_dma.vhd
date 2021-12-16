@@ -95,11 +95,10 @@ entity pcie_dma is
 			--! Note that the AM57 reports it is limited to TLPs
 			--! of 64, but testing shows it's actually limited to
 			--! to 32. 
-		g_num_complete_bits : natural := 8 --! Indicate how many unique 
-			--! feedback lines are available for external FPGA core(s)
-			--! to be informed when transmission of an AXI packet
-			--! via the i_dma_data_axis_* interface has completed
-			--! (i.e. data is in AM57 memory and ready for access)
+		g_num_driving_cores: natural := 1 --! Defines how many different
+			--! Cores are using PCIe output. This defines how
+			--! big of a mux we need to round robin and allow
+			--! each input core to send data.
 	);
 	port (
 		--! Register interface to change some configurations)
@@ -136,21 +135,21 @@ entity pcie_dma is
 			--! Also note that in order to create TLPs header data needs to be added so you will get back pressure
 			--! if you try to use full 8 Gbit/s throughput (overhead is 3 32-bit words per TLP).
 
-		i_dma_data_axis_tdata : IN STD_LOGIC_VECTOR(63 DOWNTO 0); --! Data words to be written to AM57 Memory Space
-		i_dma_data_axis_tlast : IN STD_LOGIC; --! Indicates last data word of a packet.
-		i_dma_data_axis_tvalid : IN STD_LOGIC; --! Indicates when i_*_axis inputs are valid.
-		o_dma_data_axis_tready : OUT STD_LOGIC; --! Indicates backpressure (i.e. if current data word needs to be held as is).
-		i_dma_data_axis_tkeep : IN STD_LOGIC_VECTOR(7 DOWNTO 0); --! Should always be all '1'
+		--! Note that for the following g_num_driving_cores defines width of bus so that if there are multiple cores both using PCIe
+		--!  this component can round robin handle input data.
+		i_dma_data_axis_tdata : IN STD_LOGIC_VECTOR((g_num_driving_cores * 64)-1 DOWNTO 0); --! Data words to be written to AM57 Memory Space
+		i_dma_data_axis_tlast : IN STD_LOGIC_VECTOR(g_num_driving_cores-1 downto 0); --! Indicates last data word of a packet.
+		i_dma_data_axis_tvalid : IN STD_LOGIC_VECTOR(g_num_driving_cores-1 downto 0); --! Indicates when i_*_axis inputs are valid.
+		o_dma_data_axis_tready : OUT STD_LOGIC_VECTOR(g_num_driving_cores-1 downto 0); --! Indicates backpressure (i.e. if current data word needs to be held as is).
+		i_dma_data_axis_tkeep : IN STD_LOGIC_VECTOR((g_num_driving_cores * 8)-1 DOWNTO 0); --! Should always be all '1'
 
-		i_dma_data_start_addr : in std_logic_vector(31 downto 0); --! Indicates the AM57 physical address where the incoming packet data will start being written.
+		i_dma_data_start_addr : in std_logic_vector((g_num_driving_cores * 32)-1 downto 0); --! Indicates the AM57 physical address where the incoming packet data will start being written.
 			--! Must be constant and valid throughout entire packet.
 
-		i_dma_data_complete_status_sel : in std_logic_vector(g_num_complete_bits-1 downto 0); --! Indicates which o_complete bit should have a rising edge to indicate that the last TLP write has completed.
-			--! Must be constant and valid throughout entire packet.
-		o_dma_data_complete : out std_logic_vector(g_num_complete_bits-1 downto 0) --! Either edge transition on bit indicates that final TLP write has finished and AM57 can be 
-			--! interrupted to indicate data is ready to be read. Note that i_complete_status_sel is used to indicate which bit should go high in relation to
-			--! which core may have made a request. This is necessary since we are not using MSIs and sending final write TLP tells us nothing about when
-			--! that write actually compelte. Instead we need to do a read TLP following final write TLP so we don't end up with a race condition.
+		i_dma_data_complete_en : in std_logic_vector(g_num_driving_cores-1 downto 0); --! Indicates if driving core(s) wants a complete signal
+			--! sent back once final write TLP is verified to be in AM57 memory.
+		o_dma_data_complete : out std_logic_vector(g_num_driving_cores-1 downto 0) --! Either edge transition on bit indicates that final TLP write has finished and AM57 can be 
+			--! interrupted to indicate data is ready to be read. 
 	);
 end pcie_dma;
 
@@ -287,7 +286,7 @@ architecture rtl of pcie_dma is
 	signal s_tlp_desc_fifo_din_addr : std_logic_vector(31 downto 0) := (others => '0');
 	signal s_tlp_desc_fifo_overflow : std_logic := '0';
 	signal s_tlp_desc_fifo_rd_en : std_logic := '0';
-	signal s_tlp_desc_fifo_dout_complete_status_sel : std_logic_vector(g_num_complete_bits-1 downto 0) := (others => '0');
+	signal s_tlp_desc_fifo_dout_complete_status_sel : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
 	signal s_tlp_desc_fifo_dout_tlast : std_logic := '0';
 	signal s_tlp_desc_fifo_dout_len : std_logic_vector(9 downto 0) := (others => '0');
 	signal s_tlp_desc_fifo_dout_addr : std_logic_vector(31 downto 0) := (others => '0');
@@ -296,10 +295,8 @@ architecture rtl of pcie_dma is
 	signal s_dma_data_in_tlp_word_cntr : integer := 0;
 	signal s_dma_data_in_total_word_cntr : integer := 0;
 
-	signal s_dma_complete_status_sel : std_logic_vector(g_num_complete_bits-1 downto 0) := (others => '0');
+	signal s_dma_complete_status_sel : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
 	signal s_dma_tlp_last : std_logic := '0';
-
-	signal s_o_dma_data_complete : std_logic_vector(g_num_complete_bits-1 downto 0);
 
 	signal s_i_dma_data_axis_tlast_r1 : std_logic := '0';
 
@@ -368,6 +365,17 @@ architecture rtl of pcie_dma is
 	signal s_rx_valid_cntr : integer := 0; --! Counts number of valid 64-bit words receive on PCIe bus from Host (AM57).
 	signal s_rx_valid_cntr_meta : integer := 0;
 	signal s_rx_valid_cntr_reg : integer := 0;
+
+	signal s_i_dma_data_axis_tdata : STD_LOGIC_VECTOR(64-1 DOWNTO 0) := (others => '0');
+	signal s_i_dma_data_axis_tlast : STD_LOGIC := '0'; 
+	signal s_i_dma_data_axis_tvalid : STD_LOGIC := '0'; 
+	signal s_o_dma_data_axis_tready : STD_LOGIC := '0'; 
+	signal s_i_dma_data_axis_tkeep : STD_LOGIC_VECTOR(8-1 DOWNTO 0) := (others => '0');
+
+	signal s_i_dma_data_start_addr : std_logic_vector(32-1 downto 0) := (others => '0');
+
+	signal s_i_dma_data_complete_en : std_logic_vector(g_num_driving_cores-1 downto 0); --! Indicates if driving core(s) wants a complete signal
+	signal s_o_dma_data_complete : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
 
 
 	---
@@ -857,6 +865,19 @@ begin
 		end if;
 	end process REG_READ_PROC;
 
+	-- Insert logic for input core selection (round robin selection of each core that might be driving data)
+--TODO: test where we only service requests from Driving Core 0. Once this works we add in round robin logic
+	s_i_dma_data_axis_tdata <= i_dma_data_axis_tdata(63 downto 0);
+	s_i_dma_data_axis_tlast <= i_dma_data_axis_tlast(0);
+	s_i_dma_data_axis_tvalid <= i_dma_data_axis_tvalid(0);
+	o_dma_data_axis_tready(0) <= s_o_dma_data_axis_tready;
+	s_i_dma_data_axis_tkeep <= i_dma_data_axis_tkeep(7 downto 0);
+
+	s_i_dma_data_start_addr <= i_dma_data_start_addr(31 downto 0);
+
+	s_i_dma_data_complete_en(0) <= i_dma_data_complete_en(0);
+
+
 	--! FIFO for buffering dma data for extenral FPGA core(s) for TLPs
 	--!  See UG953 for further details on FIFO signals
 	DMA_DATA_IN_FIFO_INST : xpm_fifo_async
@@ -889,7 +910,7 @@ begin
 			wr_clk           => i_dma_data_clk,
 			wr_ack           => open,
 			wr_en            => s_dma_data_fifo_wr_en, 
-			din              => i_dma_data_axis_tdata,
+			din              => s_i_dma_data_axis_tdata,
 			full             => s_dma_data_fifo_full, 
 			almost_full      => open, 
 			overflow         => s_dma_data_fifo_overflow,
@@ -922,9 +943,9 @@ begin
 			dbiterr          => open
 		);
 
-	s_dma_data_fifo_wr_en <= i_dma_data_axis_tvalid when (s_dma_data_in_fifo_rst = '0' and s_dma_data_fifo_full = '0') else '0';
+	s_dma_data_fifo_wr_en <= s_i_dma_data_axis_tvalid when (s_dma_data_in_fifo_rst = '0' and s_dma_data_fifo_full = '0') else '0';
 	
-	o_dma_data_axis_tready <= not(s_dma_data_fifo_full);
+	s_o_dma_data_axis_tready <= not(s_dma_data_fifo_full);
 
 	DMA_DATA_IN_PROC : process (i_dma_data_clk) 
 	begin
@@ -937,32 +958,32 @@ begin
 			s_tx_tlp_max_num_words_meta <= UNSIGNED(s_tx_tlp_max_num_words_reg);
 			s_tx_tlp_max_num_words <= s_tx_tlp_max_num_words_meta;
 
-			s_i_dma_data_axis_tlast_r1 <= i_dma_data_axis_tlast;
+			s_i_dma_data_axis_tlast_r1 <= s_i_dma_data_axis_tlast;
 
 			if (s_srst_dma_data = '1') then
 				s_dma_data_in_tlp_word_cntr <= 0;
 				s_dma_data_in_total_word_cntr <= 0;
 				s_dma_data_in_dbg_word_cntr <= (others => '0');
 			else
-				if (s_dma_data_fifo_full = '0' and i_dma_data_axis_tvalid = '1') then
+				if (s_dma_data_fifo_full = '0' and s_i_dma_data_axis_tvalid = '1') then
 					-- Two 32-bit words per valid cycle
 					s_dma_data_in_tlp_word_cntr <= s_dma_data_in_tlp_word_cntr + 2;
 					s_dma_data_in_dbg_word_cntr <= s_dma_data_in_dbg_word_cntr + 2;
 
 					-- Enough data in FIFO for another TLP
-					if (s_dma_data_in_tlp_word_cntr+2 = s_tx_tlp_max_num_words or i_dma_data_axis_tlast = '1') then
+					if (s_dma_data_in_tlp_word_cntr+2 = s_tx_tlp_max_num_words or s_i_dma_data_axis_tlast = '1') then
 						s_tlp_desc_fifo_wr_en <= '1';
 						s_tlp_desc_fifo_din_len <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_dma_data_in_tlp_word_cntr+2, 10));
 						s_dma_data_in_tlp_word_cntr <= 0;
-						s_tlp_desc_fifo_din_addr <= i_dma_data_start_addr + s_dma_data_in_total_word_cntr * 4;
+						s_tlp_desc_fifo_din_addr <= s_i_dma_data_start_addr + s_dma_data_in_total_word_cntr * 4;
 						s_dma_data_in_total_word_cntr <= s_dma_data_in_total_word_cntr + s_dma_data_in_tlp_word_cntr + 2;
 					end if;
 
-					if (i_dma_data_axis_tlast = '1') then
+					if (s_i_dma_data_axis_tlast = '1') then
 						s_dma_data_in_total_word_cntr <= 0;
 					end if;
 
-					if (i_dma_data_axis_tkeep /= "11111111") then
+					if (s_i_dma_data_axis_tkeep /= "11111111") then
 						--TODO: mark error. We do not support tkeep bits at this point
 					end if;
 				end if;
@@ -971,7 +992,7 @@ begin
 	end process DMA_DATA_IN_PROC;
 
 	--! FIFO to store info on next TLP to be sent
-	--!	din(g_num_complete_bits-1+41 downto 41) = Generate interrupt after last Write TLP is sent (overridden by din(63)
+	--!	din(g_num_driving_cores-1+41 downto 41) = Generate interrupt after last Write TLP is sent (overridden by din(63)
 	--!	din(40 downto 32) = Number of 32-bit words for TLP
 	--! 	din(31:0) = Start Address for TLP
 	--!  See UG953 for further details on FIFO signals
@@ -983,13 +1004,13 @@ begin
 			RELATED_CLOCKS          => 0, --positive integer; 0 or 1
 			-- Need to be able to buffer full TLP and data coming in for next one while current is being transmitted
 			FIFO_WRITE_DEPTH        => 16, --positive integer 
-			WRITE_DATA_WIDTH        => 43+g_num_complete_bits, --positive integer
+			WRITE_DATA_WIDTH        => 43+g_num_driving_cores, --positive integer
 			WR_DATA_COUNT_WIDTH     => 4, --positive integer
 			PROG_FULL_THRESH        => 11, --positive integer
 			FULL_RESET_VALUE        => 0, --positive integer; 0 or 1;
 			READ_MODE               => "fwft", --string; "std" or "fwft";
 			FIFO_READ_LATENCY       => 0, --positive integer;
-			READ_DATA_WIDTH         => 43+g_num_complete_bits, --positive integer
+			READ_DATA_WIDTH         => 43+g_num_driving_cores, --positive integer
 			RD_DATA_COUNT_WIDTH     => 4, --positive integer
 			PROG_EMPTY_THRESH       => 0, --positive integer
 			USE_ADV_FEATURES        => "0006", 	-- [0] to 1 enables overflow flag
@@ -1005,7 +1026,7 @@ begin
 			wr_clk           => i_dma_data_clk,
 			wr_ack           => open,
 			wr_en            => s_tlp_desc_fifo_wr_en, 
-			din(g_num_complete_bits+43-1 downto 43) => i_dma_data_complete_status_sel,
+			din(g_num_driving_cores+43-1 downto 43) => s_i_dma_data_complete_en,
 			din(42) => s_i_dma_data_axis_tlast_r1,
 			din(41 downto 32)=> s_tlp_desc_fifo_din_len,
 			din(31 downto 0) => s_tlp_desc_fifo_din_addr,
@@ -1015,7 +1036,7 @@ begin
 			wr_rst_busy      => open,
 			rd_clk           => s_pcie_axi_clk,
 			rd_en            => s_tlp_desc_fifo_rd_en,
-			dout(g_num_complete_bits+43-1 downto 43) => s_tlp_desc_fifo_dout_complete_status_sel,
+			dout(g_num_driving_cores+43-1 downto 43) => s_tlp_desc_fifo_dout_complete_status_sel,
 			dout(42) => s_tlp_desc_fifo_dout_tlast,
 			dout(41 downto 32) => s_tlp_desc_fifo_dout_len,
 			dout(31 downto 0) => s_tlp_desc_fifo_dout_addr,
@@ -1269,7 +1290,7 @@ begin
 					---  Especially when multiple cores maybe be driving this one
 					if (s_o_pcie_axis_rx_tlast = '1') then
 						-- Create edge on complete line to indicate packet data is confirmed in AM57 memory
-						for idx in 0 to g_num_complete_bits-1 loop
+						for idx in 0 to g_num_driving_cores-1 loop
 							if (s_dma_complete_status_sel(idx) = '1') then
 								s_o_dma_data_complete(idx) <= not(s_o_dma_data_complete(idx));
 							end if;

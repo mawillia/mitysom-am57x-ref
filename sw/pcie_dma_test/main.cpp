@@ -341,7 +341,7 @@ void checkDmaMem(uint32_t addr, uint32_t num16bWords, uint32_t startVal) {
 }
 
 int main(int argc, char*argv[]) {
-	if (argc < 2) {
+	if (argc < 3) {
 		printf("usage pcie_dma_test start_addr num_words\n");
 		printf("ex: ./pcie_dma_test 0xC0000000 0xFFF\n");
 		return -1;
@@ -350,10 +350,14 @@ int main(int argc, char*argv[]) {
 	uint32_t start_addr = strtoul(argv[1], NULL, 0);
 	// Number of 16 bit words
 	uint32_t num_words = strtoul(argv[2], NULL, 0);
+	uint32_t tp_offset = 0x200;
+	if (argc > 3) {
+		tp_offset = strtoul(argv[3], NULL, 0);
+	}
 
 	const int VER = 0x0DAB;
 	
-	printf("Welcome to the FPGA to AM57 PCIe DMA Test Application Ver 0x%0x4!\n", VER);
+	printf("Wilcome to the FPGA to AM57 PCIe DMA Test Application Ver 0x%0x4!\n", VER);
 	printf("\n");
 	
 	printf("Constructing DMA class.\n");
@@ -361,8 +365,8 @@ int main(int argc, char*argv[]) {
 
 	dma.setTxTlpMaxWords(32);
 
-	printf("Constructing Test Pattern Stream class.\n");
-	tcTestPatternStream tp_stream(0x01000000, 0x200);
+	printf("Constructing Test Pattern Stream class at offset 0x%04x.\n", tp_offset);
+	tcTestPatternStream tp_stream(0x01000000, tp_offset);
 	printf("\n");
 
 	printf("Reseting DMA FPGA core.\n");
