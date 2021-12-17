@@ -228,6 +228,15 @@ architecture rtl of pcie_dma is
 	constant DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(18, 6));
 	constant DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(19, 6));
 
+	constant RX_TLP_DATA_PREV_LO_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(20, 6));
+	constant RX_TLP_DATA_PREV_LO_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(21, 6));
+	constant RX_TLP_DATA_PREV_HI_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(22, 6));
+	constant RX_TLP_DATA_PREV_HI_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(23, 6));
+
+	constant RX_TLP_DATA_COMP_LO_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(24, 6));
+	constant RX_TLP_DATA_COMP_LO_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(25, 6));
+	constant RX_TLP_DATA_COMP_HI_LO_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(26, 6));
+	constant RX_TLP_DATA_COMP_HI_HI_REG_OFFSET : std_logic_vector(5 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(27, 6));
 
 	constant MAX_TLP_SIZE_FIFO_COUNT_WIDTH : integer := integer(ceil(log2(real(g_max_tlp_size))));
 
@@ -325,6 +334,19 @@ architecture rtl of pcie_dma is
 	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta : unsigned(15 downto 0) := (others => '0');
 	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg : unsigned(15 downto 0) := (others => '0');
 
+
+	signal s_rdback_verify_fifo_wr_en : std_logic := '0';
+	signal s_rdback_verify_fifo_rd_en : std_logic := '0';
+	signal s_rdback_verify_fifo_dout_empty : std_logic := '0';
+
+	signal s_rdback_verify_fifo_dout_dma_complete_status_sel : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
+	signal s_rdback_verify_fifo_dout_rd_req_addr : std_logic_vector(31 downto 0) := (others => '0');
+	signal s_rdback_verify_fifo_dout_last_wr_word : std_logic_vector(31 downto 0) := (others => '0');
+
+	signal s_rdback_verify_fifo_dout_dma_complete_status_sel_last : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
+	signal s_rdback_verify_fifo_dout_rd_req_addr_last : std_logic_vector(31 downto 0) := (others => '0');
+	signal s_rdback_verify_fifo_dout_last_wr_word_last : std_logic_vector(31 downto 0) := (others => '0');
+
 	---
 	-- TLP header fields:
 	signal s_tx_tlp_addr : unsigned(31 downto 0) := (others => '0');
@@ -362,6 +384,10 @@ architecture rtl of pcie_dma is
 	signal s_rx_tlp_data_meta : std_logic_vector(63 downto 0) := (others => '0'); 
 	signal s_rx_tlp_data_reg : std_logic_vector(63 downto 0) := (others => '0'); 
 
+	signal s_rx_tlp_data_prev : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_rx_tlp_data_prev_meta : std_logic_vector(63 downto 0) := (others => '0');
+	signal s_rx_tlp_data_prev_reg : std_logic_vector(63 downto 0) := (others => '0');
+
 	signal s_rx_valid_cntr : integer := 0; --! Counts number of valid 64-bit words receive on PCIe bus from Host (AM57).
 	signal s_rx_valid_cntr_meta : integer := 0;
 	signal s_rx_valid_cntr_reg : integer := 0;
@@ -375,8 +401,11 @@ architecture rtl of pcie_dma is
 	signal s_i_dma_data_start_addr : std_logic_vector(32-1 downto 0) := (others => '0');
 
 	signal s_i_dma_data_complete_en : std_logic_vector(g_num_driving_cores-1 downto 0); --! Indicates if driving core(s) wants a complete signal
+	signal s_i_dma_data_complete_en_r1 : std_logic_vector(g_num_driving_cores-1 downto 0); --! Indicates if driving core(s) wants a complete signal
 	signal s_o_dma_data_complete : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
 
+	signal s_core_in_selected_idx : integer range 0 to g_num_driving_cores-1 := 0;
+	signal s_core_in_active : std_logic := '0';
 
 	---
 	-- PCIe Core Signals:
@@ -740,6 +769,8 @@ begin
 	end process REG_WRITE_PROC;
 
 
+--TODO: need timing ignors for _meta registers
+
 	REG_READ_PROC : process(i_reg_clk)
 	begin
 		if rising_edge(i_reg_clk) then
@@ -751,6 +782,9 @@ begin
 
 			s_rx_tlp_data_meta <= s_rx_tlp_data;
 			s_rx_tlp_data_reg <= s_rx_tlp_data_meta;
+
+			s_rx_tlp_data_prev_meta <= s_rx_tlp_data_prev;
+			s_rx_tlp_data_prev_reg <= s_rx_tlp_data_prev_meta;
 
 			s_rx_valid_cntr_meta <= s_rx_valid_cntr;
 			s_rx_valid_cntr_reg <= s_rx_valid_cntr_meta;
@@ -799,7 +833,8 @@ begin
 							o_reg_data(12) <= '1';
 						end if;
 
-						o_reg_data(14) <= s_dma_complete_status_sel(0);
+						o_reg_data(13) <= s_rdback_verify_fifo_dout_dma_complete_status_sel_last(0);
+						o_reg_data(14) <= s_rdback_verify_fifo_dout_dma_complete_status_sel_last(1);
 						o_reg_data(15) <= s_dma_tlp_last;
 
 					when TX_TLP_MAX_WORDS_REG_OFFSET =>
@@ -858,6 +893,32 @@ begin
 						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg);
 
 
+					when RX_TLP_DATA_PREV_LO_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(15 downto 0);
+
+					when RX_TLP_DATA_PREV_LO_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(31 downto 16);
+
+					when RX_TLP_DATA_PREV_HI_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(47 downto 32);
+
+					when RX_TLP_DATA_PREV_HI_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(63 downto 48);
+
+
+					when RX_TLP_DATA_COMP_LO_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_rd_req_addr_last(15 downto 0);
+
+					when RX_TLP_DATA_COMP_LO_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_rd_req_addr_last(31 downto 16);
+
+					when RX_TLP_DATA_COMP_HI_LO_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_last_wr_word_last(15 downto 0);
+
+					when RX_TLP_DATA_COMP_HI_HI_REG_OFFSET =>
+						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_last_wr_word_last(31 downto 16);
+
+
 					when others =>
 						o_reg_data <= x"DEAD";
 				end case;
@@ -865,17 +926,57 @@ begin
 		end if;
 	end process REG_READ_PROC;
 
-	-- Insert logic for input core selection (round robin selection of each core that might be driving data)
---TODO: test where we only service requests from Driving Core 0. Once this works we add in round robin logic
-	s_i_dma_data_axis_tdata <= i_dma_data_axis_tdata(63 downto 0);
-	s_i_dma_data_axis_tlast <= i_dma_data_axis_tlast(0);
-	s_i_dma_data_axis_tvalid <= i_dma_data_axis_tvalid(0);
-	o_dma_data_axis_tready(0) <= s_o_dma_data_axis_tready;
-	s_i_dma_data_axis_tkeep <= i_dma_data_axis_tkeep(7 downto 0);
+	-- Mux for selecting which input core is active
+	s_i_dma_data_axis_tdata <= i_dma_data_axis_tdata((s_core_in_selected_idx+1)*64-1 downto s_core_in_selected_idx*64);
+	s_i_dma_data_axis_tlast <= i_dma_data_axis_tlast(s_core_in_selected_idx);
+	s_i_dma_data_axis_tvalid <= i_dma_data_axis_tvalid(s_core_in_selected_idx);
+	s_i_dma_data_axis_tkeep <= i_dma_data_axis_tkeep((s_core_in_selected_idx+1)*8-1 downto s_core_in_selected_idx*8);
 
-	s_i_dma_data_start_addr <= i_dma_data_start_addr(31 downto 0);
+	s_i_dma_data_start_addr <= i_dma_data_start_addr((s_core_in_selected_idx+1)*32-1 downto s_core_in_selected_idx*32);
 
-	s_i_dma_data_complete_en(0) <= i_dma_data_complete_en(0);
+	DMA_MUX_IN_GEN : for idx in 0 to g_num_driving_cores-1 generate
+		o_dma_data_axis_tready(idx) <= s_o_dma_data_axis_tready when (idx = s_core_in_selected_idx) else '0';
+		s_i_dma_data_complete_en(idx) <= i_dma_data_complete_en(idx) when (idx = s_core_in_selected_idx) else '0';
+	end generate DMA_MUX_IN_GEN;
+
+	--! Process to handle case for multiple Cores wanting to send data via PCIe to AM57 Memory space
+	--!  This is a simple round robin arbitration scheme for checking and choosing who gets to go
+	--!  next.
+	DMA_MUX_IN_PROC : process (i_dma_data_clk)
+	begin
+		if rising_edge(i_dma_data_clk) then
+			if (s_srst_dma_data = '1') then
+				s_core_in_selected_idx <= 0;
+				s_core_in_active <= '0';
+			else
+				if (s_core_in_active = '0' and s_i_dma_data_axis_tvalid = '0') then
+					-- Current selected Core is not transmitting, check the next
+					if (s_core_in_selected_idx < g_num_driving_cores-1) then
+						s_core_in_selected_idx <= s_core_in_selected_idx + 1;
+					else
+						s_core_in_selected_idx <= 0;
+					end if;
+				else
+					if (s_i_dma_data_axis_tvalid = '1') then
+						-- Need to remember we are mid packet in case data_v goes low during packet
+						s_core_in_active <= '1';
+	
+						-- Mark core as not active at end of packet and move to check other cores 
+						--  (so current core doesn't starve system if it already has more data queued)
+						if (s_o_dma_data_axis_tready = '1' and s_i_dma_data_axis_tlast = '1') then
+							s_core_in_active <= '0';
+
+							if (s_core_in_selected_idx < g_num_driving_cores-1) then
+								s_core_in_selected_idx <= s_core_in_selected_idx + 1;
+							else
+								s_core_in_selected_idx <= 0;
+							end if;
+						end if;
+					end if;
+				end if;
+			end if;
+		end if;
+	end process DMA_MUX_IN_PROC;
 
 
 	--! FIFO for buffering dma data for extenral FPGA core(s) for TLPs
@@ -958,7 +1059,9 @@ begin
 			s_tx_tlp_max_num_words_meta <= UNSIGNED(s_tx_tlp_max_num_words_reg);
 			s_tx_tlp_max_num_words <= s_tx_tlp_max_num_words_meta;
 
+			-- Write takes place cycle after these were valid, so save last cycle for writing to FIFO
 			s_i_dma_data_axis_tlast_r1 <= s_i_dma_data_axis_tlast;
+			s_i_dma_data_complete_en_r1 <= s_i_dma_data_complete_en;
 
 			if (s_srst_dma_data = '1') then
 				s_dma_data_in_tlp_word_cntr <= 0;
@@ -1026,7 +1129,7 @@ begin
 			wr_clk           => i_dma_data_clk,
 			wr_ack           => open,
 			wr_en            => s_tlp_desc_fifo_wr_en, 
-			din(g_num_driving_cores+43-1 downto 43) => s_i_dma_data_complete_en,
+			din(g_num_driving_cores+43-1 downto 43) => s_i_dma_data_complete_en_r1,
 			din(42) => s_i_dma_data_axis_tlast_r1,
 			din(41 downto 32)=> s_tlp_desc_fifo_din_len,
 			din(31 downto 0) => s_tlp_desc_fifo_din_addr,
@@ -1099,6 +1202,8 @@ begin
 
 			s_tlp_desc_fifo_rd_en <= '0';
 
+			s_rdback_verify_fifo_wr_en <= '0';
+
 			if (s_dma_data_fifo_rd_en = '1') then
 				s_dma_data_fifo_dout_prev <= s_dma_data_fifo_dout;
 
@@ -1149,13 +1254,13 @@ begin
 
 								-- For reading back (and verifying someday?) last word written as part of this DMA
 								s_rd_req_addr <= s_tx_tlp_addr + 4*UNSIGNED(s_tx_tlp_wr_length) - 4;
-								s_last_wr_word <= s_i_pcie_axis_tx_tdata(31 downto 0);
+								s_last_wr_word <= s_i_pcie_axis_tx_tdata(63 downto 32);
 							else
 								s_tx_tlp_words_remain_cntr <= s_tx_tlp_words_remain_cntr - 1;
 
 								-- For reading back (and verifying someday?) last word written as part of this DMA
 								s_rd_req_addr <= s_tx_tlp_addr + 4*UNSIGNED(s_tx_tlp_wr_length) - 4;
-								s_last_wr_word <= s_i_pcie_axis_tx_tdata(63 downto 32);
+								s_last_wr_word <= s_i_pcie_axis_tx_tdata(31 downto 0);
 							end if;
 
 							-- Check if this is last word of TLP
@@ -1178,6 +1283,9 @@ begin
 
 					when TX_RD_REQ_CLOCK1_STATE =>
 						if (s_o_pcie_axis_tx_tready = '1') then
+							-- Add necessary data into FIFO for when read comes back
+							s_rdback_verify_fifo_wr_en <= '1';
+								
 							s_tx_tlp_state <= TX_TLP_CLOCK0_STATE;
 						end if;
 
@@ -1271,30 +1379,100 @@ begin
 		end case;
 	end process PCIE_AXI_TX_PROC;
 
+	--! Stores data for what we expect from TLP read after Write and who to interrupt when received
+	RDBACK_VERIFY_FIFO_INST : xpm_fifo_async
+		generic map 
+		(
+			FIFO_MEMORY_TYPE        => "auto",  --string; "auto", "block", or "distributed";
+			ECC_MODE                => "no_ecc", --string; "no_ecc" or "en_ecc";
+			RELATED_CLOCKS          => 0, --positive integer; 0 or 1
+			-- Need to be able to buffer full TLP and data coming in for next one while current is being transmitted
+			FIFO_WRITE_DEPTH        => 16, --positive integer 
+			WRITE_DATA_WIDTH        => 64+g_num_driving_cores, --positive integer
+			WR_DATA_COUNT_WIDTH     => 4, --positive integer
+			PROG_FULL_THRESH        => 11, --positive integer
+			FULL_RESET_VALUE        => 0, --positive integer; 0 or 1;
+			READ_MODE               => "fwft", --string; "std" or "fwft";
+			FIFO_READ_LATENCY       => 0, --positive integer;
+			READ_DATA_WIDTH         => 64+g_num_driving_cores, --positive integer
+			RD_DATA_COUNT_WIDTH     => 4, --positive integer
+			PROG_EMPTY_THRESH       => 0, --positive integer
+			USE_ADV_FEATURES        => "0006", 	-- [0] to 1 enables overflow flag
+								-- [2] to 1 enables wr_data_count
+			DOUT_RESET_VALUE        => "0", --string
+			CDC_SYNC_STAGES         => 2, --positive integer
+			WAKEUP_TIME             => 0 --positive integer; 0 or 2;
+		)
+		port map 
+		(
+			sleep            => '0',
+			rst              => s_dma_data_in_fifo_rst,
+			wr_clk           => s_pcie_axi_clk,
+			wr_ack           => open,
+			wr_en            => s_rdback_verify_fifo_wr_en, 
+			din(g_num_driving_cores+64-1 downto 64) => s_dma_complete_status_sel,
+			din(63 downto 32)=> STD_LOGIC_VECTOR(s_rd_req_addr),
+			din(31 downto 0) => s_last_wr_word,
+			full             => open, 
+			almost_full      => open, 
+			overflow         => open,
+			wr_rst_busy      => open,
+			rd_clk           => s_pcie_axi_clk,
+			rd_en            => s_rdback_verify_fifo_rd_en,
+			dout(g_num_driving_cores+64-1 downto 64) => s_rdback_verify_fifo_dout_dma_complete_status_sel,
+			dout(63 downto 32)=> s_rdback_verify_fifo_dout_rd_req_addr,
+			dout(31 downto 0) => s_rdback_verify_fifo_dout_last_wr_word,
+			empty            => s_rdback_verify_fifo_dout_empty,
+			almost_empty     => open, 
+			underflow        => open, 
+			data_valid       => open, 
+			rd_rst_busy      => open, 
+			prog_full        => open,
+			wr_data_count    => open,
+			prog_empty       => open,
+			rd_data_count    => open,
+			injectsbiterr    => '0',
+			injectdbiterr    => '0',
+			sbiterr          => open,
+			dbiterr          => open
+		);
+
+	-- Only accept readback data if we have details in FIFO to compare it against
+	s_i_pcie_axis_rx_tready <= not(s_rdback_verify_fifo_dout_empty);
+
 	--! Process for receiving TLPs from AM57. For now debug, but eventually will maybe add logic for DMA from Host (AM57) to Card (FPGA)
 	PCIE_AXI_RX_PROC : process(s_pcie_axi_clk)
 	begin
 		if rising_edge(s_pcie_axi_clk) then
-			-- For now always accept TLP data from PCIe Host (AM57)
-			s_i_pcie_axis_rx_tready <= '1';
+			s_rdback_verify_fifo_rd_en <= '0';
 
 			if (s_srst_axi = '1') then
 				s_rx_tlp_data <= (others => '0');
 
 				s_rx_valid_cntr <= 0;
 			else
-				if (s_o_pcie_axis_rx_tvalid = '1') then
+				if (s_i_pcie_axis_rx_tready = '1' and s_o_pcie_axis_rx_tvalid = '1') then
 					s_rx_tlp_data <= s_o_pcie_axis_rx_tdata;
+					s_rx_tlp_data_prev <= s_rx_tlp_data;
 
-					--TODO: Need small FIFO storing this info (and rd addr and expected value) for 100% confident interrupts
-					---  Especially when multiple cores maybe be driving this one
+					-- Wait until last word
 					if (s_o_pcie_axis_rx_tlast = '1') then
+						--TODO: add safety compares and only interrupt is addr and data matches!
+
 						-- Create edge on complete line to indicate packet data is confirmed in AM57 memory
 						for idx in 0 to g_num_driving_cores-1 loop
-							if (s_dma_complete_status_sel(idx) = '1') then
+							if (s_rdback_verify_fifo_dout_dma_complete_status_sel(idx) = '1') then
 								s_o_dma_data_complete(idx) <= not(s_o_dma_data_complete(idx));
 							end if;
 						end loop;
+
+						-- Data at end of FIFO used and can be cleared
+						s_rdback_verify_fifo_rd_en <= '1';
+
+						-- Debug
+						s_rdback_verify_fifo_dout_dma_complete_status_sel_last <= s_rdback_verify_fifo_dout_dma_complete_status_sel;
+						s_rdback_verify_fifo_dout_rd_req_addr_last <= s_rdback_verify_fifo_dout_rd_req_addr;
+						s_rdback_verify_fifo_dout_last_wr_word_last <= s_rdback_verify_fifo_dout_last_wr_word;
 					end if;
 
 					s_rx_valid_cntr <= s_rx_valid_cntr + 1;

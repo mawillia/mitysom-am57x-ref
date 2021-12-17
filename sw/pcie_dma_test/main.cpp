@@ -41,6 +41,9 @@
 #define DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET (18)
 #define DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET (19)
 
+#define FPGA_PCIE_DMA_RX_TLP_DATA_PREV_LO_LO_REG_OFFSET (20)
+
+#define FPGA_PCIE_DMA_RX_TLP_DATA_COMP_LO_LO_REG_OFFSET (24)
 
 class tcFpgaPcieDma {
 public:
@@ -62,6 +65,8 @@ public:
 	uint16_t getTxTlpMaxWords();
 
 	uint64_t getLastRxTlpWord();
+	uint64_t getLastRxTlpWordPrev();
+	uint64_t getLastRxTlpWordComp();
 
 	uint16_t getRxTlpCnt();
 
@@ -138,7 +143,17 @@ uint16_t tcFpgaPcieDma::getTxTlpMaxWords() {
 }
 
 uint64_t tcFpgaPcieDma::getLastRxTlpWord() {
-	volatile uint64_t* val_ptr= (volatile uint64_t*)&regs[FPGA_PCIE_DMA_RX_TLP_DATA_LO_LO_REG_OFFSET];
+	volatile uint64_t* val_ptr= (volatile uint64_t*)&regs[FPGA_PCIE_DMA_RX_TLP_DATA_HI_LO_REG_OFFSET];
+	return *val_ptr;
+}
+
+uint64_t tcFpgaPcieDma::getLastRxTlpWordPrev() {
+	volatile uint64_t* val_ptr= (volatile uint64_t*)&regs[FPGA_PCIE_DMA_RX_TLP_DATA_PREV_LO_LO_REG_OFFSET];
+	return *val_ptr;
+}
+
+uint64_t tcFpgaPcieDma::getLastRxTlpWordComp() {
+	volatile uint64_t* val_ptr= (volatile uint64_t*)&regs[FPGA_PCIE_DMA_RX_TLP_DATA_COMP_LO_LO_REG_OFFSET];
 	return *val_ptr;
 }
 
@@ -404,7 +419,10 @@ int main(int argc, char*argv[]) {
 	printf("data len = %d\n", dma.getDbgDataLen());
 	printf("state = 0x%04x\n", dma.getDbgState());
 	printf("RX TLP Count %d\n", dma.getRxTlpCnt());
-	printf("RX TLP Word 0x%016X\n", dma.getLastRxTlpWord());
+//TODO: something seems off with these 64-bit reads...
+	printf("RX TLP Word 0x%016LX\n", dma.getLastRxTlpWord());
+	printf("RX TLP Word Prev 0x%016LX\n", dma.getLastRxTlpWordPrev());
+	printf("RX TLP Word Comp 0x%016LX\n", dma.getLastRxTlpWordComp());
 	printf("RdRqStateCntr = %d\n", dma.getDbgRdRqStateCntr());
 	printf("TxRqStateCntr = %d\n", dma.getDbgTxRqStateCntr());
 	printf("\n");
@@ -427,6 +445,8 @@ int main(int argc, char*argv[]) {
 	printf("Max TLP Words = %d\n", dma.getTxTlpMaxWords());
 	printf("RX TLP Count %d\n", dma.getRxTlpCnt());
 	printf("RX TLP Word 0x%016X\n", dma.getLastRxTlpWord());
+	printf("RX TLP Word Prev 0x%016X\n", dma.getLastRxTlpWordPrev());
+	printf("RX TLP Word Comp 0x%016X\n", dma.getLastRxTlpWordComp());
 
 	printf("BOSSANUVA!\n");
 
