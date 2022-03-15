@@ -3,7 +3,7 @@
 # make sure you have your license file configuration setup.
 #
 # Define output directory area
-set outputDir ./pcie_dma_example_output
+set outputDir ./mitycam_pcie_stream_top_output
 file mkdir $outputDir
 #
 set_part xc7a15tcsg325-2
@@ -11,10 +11,13 @@ set_part xc7a15tcsg325-2
 # setup design sources and constraints
 read_vhdl [ glob ./src/hdl/*.vhd ]
 read_vhdl [ glob ../ip/common/*.vhd ]
-read_vhdl [ glob ../ip/gpio/*.vhd ]
 read_vhdl [ glob ../ip/gpmc/*.vhd ]
-read_xdc ./src/constraints/xilinx_pcie_7x_ep_x2g2.xdc
-read_xdc ./src/constraints/pcie_dma_example_top.xdc
+read_vhdl [ glob ../ip/mitycam/common/*.vhd ]
+read_vhdl [ glob ../ip/mitycam/stream_to_pcie/*.vhd ]
+read_vhdl [ glob ../ip/mitycam/test_pattern_gen/*.vhd ]
+read_xdc  [ glob ./src/constraints/mitycam_pcie_stream_top.xdc ]
+read_xdc  [ glob ./src/constraints/xilinx_pcie_7x_ep_x2g2.xdc ]
+
 #
 #
 read_ip ./ip/clk_wiz_0/clk_wiz_0.xci
@@ -36,14 +39,14 @@ get_files -all -of_objects [get_files ../ip/pcie_dma/pcie_7x_0/pcie_7x_0.xci]
 #
 #
 # run synthesis
-synth_design -top pcie_dma_example_top
+synth_design -top mitycam_pcie_stream_top
 write_checkpoint -force $outputDir/post_synth
 report_timing_summary -file $outputDir/post_synth_timing_summary.rpt
 report_power -file $outputDir/post_synth_power.rpt
 #
 #
 # run placement and logic optimization
-read_xdc ./src/constraints/pcie_dma_example_top_impl.xdc
+read_xdc ./src/constraints/mitycam_pcie_stream_top_impl.xdc
 opt_design
 place_design
 phys_opt_design
@@ -66,8 +69,8 @@ write_xdc $outputDir/post_route_impl.xdc -mode port -force
 #
 #
 # Generate bitstream and binary file
-write_bitstream -force -bin_file $outputDir/pcie_dma_example.bit
+write_bitstream -force -bin_file $outputDir/mitycam_pcie_stream_top.bit
 # Generate file for use with uBoot
 # TODO unclear if -disablebitswap is required
-write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/pcie_dma_example.bit" -verbose $outputDir/devkit_fpga_uboot.bin
+write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/mitycam_pcie_stream_top.bit" -verbose $outputDir/mitycam_pcie_stream_top.bin
 exit
