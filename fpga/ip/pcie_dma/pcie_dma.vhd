@@ -273,14 +273,13 @@ architecture rtl of pcie_dma is
 			TX_RD_REQ_CLOCK1_STATE -- Send final 32 bits of TLP for read request
 		);
 	signal s_tx_tlp_state : t_tx_tlp_state := TX_TLP_CLOCK0_STATE;
-	signal s_tx_tlp_state_meta : t_tx_tlp_state := TX_TLP_CLOCK0_STATE;
 
 	signal s_tx_tlp_max_num_words_reg : std_logic_vector(9 downto 0) := STD_LOGIC_VECTOR(TO_UNSIGNED(32, 10)); --! Maximum number of words per TLP payload.
 		--! Must be a power of 2. Note that AM57 can only handle TLPs with 32 words. Any larger and TLP will silently be dropped.
 	signal s_tx_tlp_max_num_words_meta : unsigned(9 downto 0) := (others => '0');
 	signal s_tx_tlp_max_num_words : unsigned(9 downto 0) := (others => '0');
 
-	signal s_tx_tlp_words_remain_cntr : integer := 0; --! Number of 32-bit words remaining to transmit for current TLP.
+	signal s_tx_tlp_words_remain_cntr : integer range 0 to 1023 := 0; --! Number of 32-bit words remaining to transmit for current TLP.
 
 	signal s_dma_data_in_fifo_rst : std_logic := '0';
 	signal s_dma_data_fifo_wr_en : std_logic := '0';
@@ -301,40 +300,15 @@ architecture rtl of pcie_dma is
 	signal s_tlp_desc_fifo_dout_addr : std_logic_vector(31 downto 0) := (others => '0');
 	signal s_tlp_desc_fifo_empty : std_logic := '0';
 
-	signal s_dma_data_in_tlp_word_cntr : integer := 0;
+	signal s_dma_data_in_tlp_word_cntr : integer range 0 to 1023 := 0;
+	signal s_dma_data_in_tlp_word_cntr_last : integer range 0 to 1023 := 0;
 	signal s_dma_data_in_total_word_cntr : integer := 0;
+	signal s_tlp_4k_max_count : integer range 0 to 2048 := 2047;
 
 	signal s_dma_complete_status_sel : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
 	signal s_dma_tlp_last : std_logic := '0';
 
 	signal s_i_dma_data_axis_tlast_r1 : std_logic := '0';
-
-	signal s_dma_data_in_dbg_word_cntr : unsigned(31 downto 0) := (others => '0');
-	signal s_dma_data_in_dbg_word_cntr_meta : std_logic_vector(31 downto 0) := (others => '0');
-	signal s_dma_data_in_dbg_word_cntr_reg : std_logic_vector(31 downto 0) := (others => '0');
-
-	signal s_dma_data_fifo_dout_dbg_cntr : unsigned(31 downto 0) := (others => '0');
-	signal s_dma_data_fifo_dout_dbg_cntr_meta : unsigned(31 downto 0) := (others => '0');
-	signal s_dma_data_fifo_dout_dbg_cntr_reg : unsigned(31 downto 0) := (others => '0');
-
-
-	signal s_tx_tlp_addr_meta : unsigned(31 downto 0) := (others => '0');
-	signal s_tx_tlp_addr_reg : unsigned(31 downto 0) := (others => '0');
-
-	signal s_tx_tlp_wr_length_meta : std_logic_vector(9 downto 0) := (others => '0');
-	signal s_tx_tlp_wr_length_reg : std_logic_vector(9 downto 0) := (others => '0');
-
-
-	signal s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr : unsigned(15 downto 0) := (others => '0');
-	signal s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_meta : unsigned(15 downto 0) := (others => '0');
-	signal s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_reg : unsigned(15 downto 0) := (others => '0');
-
-
-	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr : unsigned(15 downto 0) := (others => '0');
-	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta : unsigned(15 downto 0) := (others => '0');
-	signal s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg : unsigned(15 downto 0) := (others => '0');
-
-
 	signal s_rdback_verify_fifo_wr_en : std_logic := '0';
 	signal s_rdback_verify_fifo_rd_en : std_logic := '0';
 	signal s_rdback_verify_fifo_dout_empty : std_logic := '0';
@@ -342,10 +316,6 @@ architecture rtl of pcie_dma is
 	signal s_rdback_verify_fifo_dout_dma_complete_status_sel : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
 	signal s_rdback_verify_fifo_dout_rd_req_addr : std_logic_vector(31 downto 0) := (others => '0');
 	signal s_rdback_verify_fifo_dout_last_wr_word : std_logic_vector(31 downto 0) := (others => '0');
-
-	signal s_rdback_verify_fifo_dout_dma_complete_status_sel_last : std_logic_vector(g_num_driving_cores-1 downto 0) := (others => '0');
-	signal s_rdback_verify_fifo_dout_rd_req_addr_last : std_logic_vector(31 downto 0) := (others => '0');
-	signal s_rdback_verify_fifo_dout_last_wr_word_last : std_logic_vector(31 downto 0) := (others => '0');
 
 	---
 	-- TLP header fields:
@@ -381,16 +351,6 @@ architecture rtl of pcie_dma is
 
 	signal s_rx_tlp_data : std_logic_vector(63 downto 0) := (others => '0'); --! Last valid Long Word received from PCIe core AXR RX interface (sent by Host (AM57))
 		--! In case of read completion bits 63:32 will be the value read from the requested address (but endian reversed). Should match s_last_wr_word.
-	signal s_rx_tlp_data_meta : std_logic_vector(63 downto 0) := (others => '0'); 
-	signal s_rx_tlp_data_reg : std_logic_vector(63 downto 0) := (others => '0'); 
-
-	signal s_rx_tlp_data_prev : std_logic_vector(63 downto 0) := (others => '0');
-	signal s_rx_tlp_data_prev_meta : std_logic_vector(63 downto 0) := (others => '0');
-	signal s_rx_tlp_data_prev_reg : std_logic_vector(63 downto 0) := (others => '0');
-
-	signal s_rx_valid_cntr : integer := 0; --! Counts number of valid 64-bit words receive on PCIe bus from Host (AM57).
-	signal s_rx_valid_cntr_meta : integer := 0;
-	signal s_rx_valid_cntr_reg : integer := 0;
 
 	signal s_i_dma_data_axis_tdata : STD_LOGIC_VECTOR(64-1 DOWNTO 0) := (others => '0');
 	signal s_i_dma_data_axis_tlast : STD_LOGIC := '0'; 
@@ -435,6 +395,28 @@ architecture rtl of pcie_dma is
 	signal cfg_device_number : std_logic_vector(4 downto 0);
 	signal cfg_function_number : std_logic_vector(2 downto 0);
 
+	-- debugging, uncomment to find using ILA inserter
+	-- attribute mark_debug : string;
+	-- attribute mark_debug of s_tx_tlp_state : signal is "true";
+	-- attribute mark_debug of s_tx_tlp_wr_length : signal is "true";
+	-- attribute mark_debug of s_tx_tlp_addr : signal is "true";
+	-- attribute mark_debug of s_dma_complete_status_sel : signal is "true";
+	-- attribute mark_debug of s_dma_tlp_last : signal is "true";
+	-- attribute mark_debug of s_tlp_desc_fifo_rd_en : signal is "true";
+	-- attribute mark_debug of s_o_dma_data_complete : signal is "true";
+	-- attribute mark_debug of s_o_dma_data_axis_tready : signal is "true";
+-- 
+	-- attribute mark_debug of s_o_pcie_axis_tx_tready : signal is "true";
+	-- attribute mark_debug of s_i_pcie_axis_tx_tdata : signal is "true";
+	-- attribute mark_debug of s_i_pcie_axis_tx_tlast : signal is "true";
+	-- attribute mark_debug of s_i_pcie_axis_tx_tvalid : signal is "true";
+-- 
+	-- attribute mark_debug of s_dma_data_fifo_full : signal is "true";
+	-- attribute mark_debug of s_tlp_4k_max_count : signal is "true";
+	-- attribute mark_debug of s_dma_data_in_tlp_word_cntr : signal is "true";
+	-- attribute mark_debug of s_tlp_desc_fifo_din_addr : signal is "true";
+	-- attribute mark_debug of s_tlp_desc_fifo_wr_en : signal is "true";
+	-- attribute mark_debug of s_tlp_desc_fifo_din_len : signal is "true";
 
 	------------------------------------
 	-- Components
@@ -745,7 +727,6 @@ begin
 	REG_WRITE_PROC : process(i_reg_clk)
 	begin
 		if rising_edge(i_reg_clk) then
-			s_dma_data_in_fifo_rst <= s_srst_reg;
 
 			if (i_reg_cs = '1' and i_reg_wr = '1') then
 				case i_reg_addr is
@@ -778,35 +759,6 @@ begin
 
 			s_ver_rd <= '0';
 
-			s_tx_tlp_state_meta <= s_tx_tlp_state;
-
-			s_rx_tlp_data_meta <= s_rx_tlp_data;
-			s_rx_tlp_data_reg <= s_rx_tlp_data_meta;
-
-			s_rx_tlp_data_prev_meta <= s_rx_tlp_data_prev;
-			s_rx_tlp_data_prev_reg <= s_rx_tlp_data_prev_meta;
-
-			s_rx_valid_cntr_meta <= s_rx_valid_cntr;
-			s_rx_valid_cntr_reg <= s_rx_valid_cntr_meta;
-
-			s_dma_data_in_dbg_word_cntr_meta <= STD_LOGIC_VECTOR(s_dma_data_in_dbg_word_cntr);
-			s_dma_data_in_dbg_word_cntr_reg <= s_dma_data_in_dbg_word_cntr_meta;
-
-			s_dma_data_fifo_dout_dbg_cntr_meta <= s_dma_data_fifo_dout_dbg_cntr;
-			s_dma_data_fifo_dout_dbg_cntr_reg <= s_dma_data_fifo_dout_dbg_cntr_meta;
-
-			s_tx_tlp_addr_meta <= s_tx_tlp_addr;
-			s_tx_tlp_addr_reg <= s_tx_tlp_addr_meta;
-
-			s_tx_tlp_wr_length_meta <= s_tx_tlp_wr_length;
-			s_tx_tlp_wr_length_reg <= s_tx_tlp_wr_length_meta;
-
-			s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_meta <= s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr;
-			s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_reg <= s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_meta;
-
-			s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta <= s_TX_TLP_CLOCK1_STATE_dbg_cntr;
-			s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg <= s_TX_TLP_CLOCK1_STATE_dbg_cntr_meta;
-
 			if (i_reg_cs = '1') then
 				case i_reg_addr is
 					when VER_REG_OFFSET =>
@@ -816,111 +768,10 @@ begin
 					when CTRL_REG_OFFSET =>
 						o_reg_data(0) <= s_srst_reg;
 
-
-						if (s_tx_tlp_state_meta = TX_TLP_CLOCK0_STATE) then
-							o_reg_data(8) <= '1';
-						end if;
-						if (s_tx_tlp_state_meta = TX_TLP_CLOCK1_STATE) then
-							o_reg_data(9) <= '1';
-						end if;
-						if (s_tx_tlp_state_meta = TX_TLP_DATA_STATE) then
-							o_reg_data(10) <= '1';
-						end if;
-						if (s_tx_tlp_state_meta = TX_RD_REQ_CLOCK0_STATE) then
-							o_reg_data(11) <= '1';
-						end if;
-						if (s_tx_tlp_state_meta = TX_RD_REQ_CLOCK1_STATE) then
-							o_reg_data(12) <= '1';
-						end if;
-
-						o_reg_data(13) <= s_rdback_verify_fifo_dout_dma_complete_status_sel_last(0);
-						o_reg_data(14) <= s_rdback_verify_fifo_dout_dma_complete_status_sel_last(1);
-						o_reg_data(15) <= s_dma_tlp_last;
-
 					when TX_TLP_MAX_WORDS_REG_OFFSET =>
 						o_reg_data(9 downto 0) <= s_tx_tlp_max_num_words_reg(9 downto 0);
 
-
-					when RX_TLP_DATA_LO_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(15 downto 0);
-
-					when RX_TLP_DATA_LO_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(31 downto 16);
-
-					when RX_TLP_DATA_HI_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(47 downto 32);
-
-					when RX_TLP_DATA_HI_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_reg(63 downto 48);
-
-
-					when RX_VALID_CNTR_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_rx_valid_cntr_reg, 16));
-
-
-					when DGB_DATA_IN_CNTR_LO_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= s_dma_data_in_dbg_word_cntr_reg(15 downto 0);
-
-					when DGB_DATA_IN_CNTR_HI_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= s_dma_data_in_dbg_word_cntr_reg(31 downto 16);
-
-
-					when DGB_DATA_DOUT_CNTR_LO_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_dma_data_fifo_dout_dbg_cntr_reg(15 downto 0));
-
-					when DGB_DATA_DOUT_CNTR_HI_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_dma_data_fifo_dout_dbg_cntr_reg(31 downto 16));
-
-
-					when DGB_PCIE_ADDR_LO_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_tx_tlp_addr_reg(15 downto 0));
-
-					when DGB_PCIE_ADDR_HI_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_tx_tlp_addr_reg(31 downto 16));
-
-
-					when DGB_DATA_LEN_LO_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= "000000" & s_tx_tlp_wr_length_reg(9 downto 0);
-
-					when DGB_DATA_LEN_HI_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= x"0000";
-
-
-					when DBG_TX_RD_REQ_CLOCK0_STATE_DBG_CNTR_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr_reg);
-
-					when DBG_TX_TLP_CLOCK1_STATE_DBG_CNTR_REG_OFFSET => 
-						o_reg_data(15 downto 0) <= STD_LOGIC_VECTOR(s_TX_TLP_CLOCK1_STATE_dbg_cntr_reg);
-
-
-					when RX_TLP_DATA_PREV_LO_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(15 downto 0);
-
-					when RX_TLP_DATA_PREV_LO_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(31 downto 16);
-
-					when RX_TLP_DATA_PREV_HI_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(47 downto 32);
-
-					when RX_TLP_DATA_PREV_HI_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rx_tlp_data_prev_reg(63 downto 48);
-
-
-					when RX_TLP_DATA_COMP_LO_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_rd_req_addr_last(15 downto 0);
-
-					when RX_TLP_DATA_COMP_LO_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_rd_req_addr_last(31 downto 16);
-
-					when RX_TLP_DATA_COMP_HI_LO_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_last_wr_word_last(15 downto 0);
-
-					when RX_TLP_DATA_COMP_HI_HI_REG_OFFSET =>
-						o_reg_data(15 downto 0) <= s_rdback_verify_fifo_dout_last_wr_word_last(31 downto 16);
-
-
-					when others =>
-						o_reg_data <= x"DEAD";
+					when others => NULL;
 				end case;
 			end if;
 		end if;
@@ -948,7 +799,9 @@ begin
 			if (s_srst_dma_data = '1') then
 				s_core_in_selected_idx <= 0;
 				s_core_in_active <= '0';
+				s_dma_data_in_fifo_rst <= '1';
 			else
+				s_dma_data_in_fifo_rst <= '0';
 				if (s_core_in_active = '0' and s_i_dma_data_axis_tvalid = '0') then
 					-- Current selected Core is not transmitting, check the next
 					if (s_core_in_selected_idx < g_num_driving_cores-1) then
@@ -1048,6 +901,9 @@ begin
 	
 	s_o_dma_data_axis_tready <= not(s_dma_data_fifo_full);
 
+	-- compute next 32 bit word address (only look at values to 1K words / 4Kbytes)
+	s_tlp_4k_max_count <= to_integer(unsigned(s_tlp_desc_fifo_din_addr(11 downto 2))) + s_dma_data_in_tlp_word_cntr_last + s_dma_data_in_tlp_word_cntr + 2;
+
 	DMA_DATA_IN_PROC : process (i_dma_data_clk) 
 	begin
 		if rising_edge(i_dma_data_clk) then
@@ -1066,19 +922,22 @@ begin
 			if (s_srst_dma_data = '1') then
 				s_dma_data_in_tlp_word_cntr <= 0;
 				s_dma_data_in_total_word_cntr <= 0;
-				s_dma_data_in_dbg_word_cntr <= (others => '0');
+				s_dma_data_in_tlp_word_cntr_last <= 0;
+				s_tlp_desc_fifo_din_addr <= s_i_dma_data_start_addr;
 			else
 				if (s_dma_data_fifo_full = '0' and s_i_dma_data_axis_tvalid = '1') then
 					-- Two 32-bit words per valid cycle
 					s_dma_data_in_tlp_word_cntr <= s_dma_data_in_tlp_word_cntr + 2;
-					s_dma_data_in_dbg_word_cntr <= s_dma_data_in_dbg_word_cntr + 2;
 
-					-- Enough data in FIFO for another TLP
-					if (s_dma_data_in_tlp_word_cntr+2 = s_tx_tlp_max_num_words or s_i_dma_data_axis_tlast = '1') then
+					-- Enough data in FIFO for another TLP, or we will cross a 4K boundary, or last word in inbound packet
+					if (s_dma_data_in_tlp_word_cntr+2 = s_tx_tlp_max_num_words 
+					    or s_tlp_4k_max_count = 1024
+					    or s_i_dma_data_axis_tlast = '1') then
 						s_tlp_desc_fifo_wr_en <= '1';
 						s_tlp_desc_fifo_din_len <= STD_LOGIC_VECTOR(TO_UNSIGNED(s_dma_data_in_tlp_word_cntr+2, 10));
 						s_dma_data_in_tlp_word_cntr <= 0;
 						s_tlp_desc_fifo_din_addr <= s_i_dma_data_start_addr + s_dma_data_in_total_word_cntr * 4;
+						s_dma_data_in_tlp_word_cntr_last <= s_dma_data_in_tlp_word_cntr + 2;
 						s_dma_data_in_total_word_cntr <= s_dma_data_in_total_word_cntr + s_dma_data_in_tlp_word_cntr + 2;
 					end if;
 
@@ -1206,14 +1065,10 @@ begin
 
 			if (s_dma_data_fifo_rd_en = '1') then
 				s_dma_data_fifo_dout_prev <= s_dma_data_fifo_dout;
-
-				s_dma_data_fifo_dout_dbg_cntr <= s_dma_data_fifo_dout_dbg_cntr + 1;
 			end if;
 
 			if (s_srst_axi = '1') then
 				s_tx_tlp_state <= TX_TLP_CLOCK0_STATE;
-
-				s_dma_data_fifo_dout_dbg_cntr <= (others => '0');
 			else
 				case s_tx_tlp_state is
 					when TX_TLP_CLOCK0_STATE => 
@@ -1238,7 +1093,6 @@ begin
 
 					when TX_TLP_CLOCK1_STATE =>
 						if (s_o_pcie_axis_tx_tready = '1') then
-							s_TX_TLP_CLOCK1_STATE_dbg_cntr <= s_TX_TLP_CLOCK1_STATE_dbg_cntr + 1;
 
 							s_tx_tlp_state <= TX_TLP_DATA_STATE;
 
@@ -1276,8 +1130,6 @@ begin
 
 					when TX_RD_REQ_CLOCK0_STATE => 
 						if (s_o_pcie_axis_tx_tready = '1') then
-							s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr <= s_TX_RD_REQ_CLOCK0_STATE_dbg_cntr + 1;
-
 							s_tx_tlp_state <= TX_RD_REQ_CLOCK1_STATE;
 						end if;
 
@@ -1449,11 +1301,9 @@ begin
 			if (s_srst_axi = '1') then
 				s_rx_tlp_data <= (others => '0');
 
-				s_rx_valid_cntr <= 0;
 			else
 				if (s_i_pcie_axis_rx_tready = '1' and s_o_pcie_axis_rx_tvalid = '1') then
 					s_rx_tlp_data <= s_o_pcie_axis_rx_tdata;
-					s_rx_tlp_data_prev <= s_rx_tlp_data;
 
 					-- Wait until last word
 					if (s_o_pcie_axis_rx_tlast = '1') then
@@ -1469,13 +1319,8 @@ begin
 						-- Data at end of FIFO used and can be cleared
 						s_rdback_verify_fifo_rd_en <= '1';
 
-						-- Debug
-						s_rdback_verify_fifo_dout_dma_complete_status_sel_last <= s_rdback_verify_fifo_dout_dma_complete_status_sel;
-						s_rdback_verify_fifo_dout_rd_req_addr_last <= s_rdback_verify_fifo_dout_rd_req_addr;
-						s_rdback_verify_fifo_dout_last_wr_word_last <= s_rdback_verify_fifo_dout_last_wr_word;
 					end if;
 
-					s_rx_valid_cntr <= s_rx_valid_cntr + 1;
 				end if;
 			end if;
 		end if;
