@@ -69,5 +69,5 @@ write_xdc $outputDir/post_route_impl.xdc -mode port -force
 write_bitstream -force -bin_file $outputDir/pcie_dma_example.bit
 # Generate file for use with uBoot
 # TODO unclear if -disablebitswap is required
-write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/pcie_dma_example.bit" -verbose $outputDir/devkit_fpga_uboot.bin
+write_cfgmem -force -format BIN -size 4 -interface SMAPx8 -loadbit "up 0 $outputDir/pcie_dma_example.bit" -verbose $outputDir/pcie_dma_example.bin
 exit
