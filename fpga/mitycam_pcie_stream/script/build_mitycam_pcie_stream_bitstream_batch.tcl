@@ -21,6 +21,9 @@ read_xdc  [ glob ./src/constraints/xilinx_pcie_7x_ep_x2g2.xdc ]
 #
 #
 read_ip ./ip/clk_wiz_0/clk_wiz_0.xci
+read_ip ../ip/pcie_dma/pcie_7x_0/pcie_7x_0.xci
+update_ip_catalog -rebuild -scan_changes
+upgrade_ip [get_ips -all]
 generate_target all [get_ips clk_wiz_0]
 synth_ip [get_ips clk_wiz_0]
 get_files -all -of_objects [get_files ./ip/clk_wiz_0/clk_wiz_0.xci]
@@ -29,7 +32,6 @@ get_files -all -of_objects [get_files ./ip/clk_wiz_0/clk_wiz_0.xci]
 #
 read_vhdl [ glob ../ip/pcie_dma/*.vhd ]
 read_verilog [ glob ../ip/pcie_dma/*.v ]
-read_ip ../ip/pcie_dma/pcie_7x_0/pcie_7x_0.xci
 generate_target all [get_ips pcie_7x_0]
 synth_ip [get_ips pcie_7x_0]
 get_files -all -of_objects [get_files ../ip/pcie_dma/pcie_7x_0/pcie_7x_0.xci]
